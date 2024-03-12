@@ -1,0 +1,6 @@
+Function Join$(sep$, items$())
+    i% = 0
+    Do While i% < 10
+        i% = i% + 1
+    Loop
+End Function

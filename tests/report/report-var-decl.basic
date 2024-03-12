@@ -1,0 +1,3 @@
+Function Join$(sep$, items$())
+    i% = 0
+End Function

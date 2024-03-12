@@ -1,0 +1,59 @@
+INT_CONST ::= [0-9]+
+REAL_CONST ::= [0-9]+"."([0-9]*)?(e[-+]?[0-9]+)?
+STRING_CONST ::= "\""[^\"]*"\""
+IDENTIFIER ::= [A-Za-z][A-Za-z0-9_]*
+
+SUB FUNCTION END DECLARE DIM PRINT 
+"{" "}" "," "(" ")"
+"%" "&" "!" "#" "$"
+IF THEN ELSE
+FOR TO NEXT EXIT
+DO LOOP WHILE UNTIL 
+">" "<" ">=" "<=" "=" "<>" "+" "-"
+
+<Program> ::= <GlobalSymbols>
+<GlobalSymbols> ::= <GlobalSymbol> <GlobalSymbols> | eps
+<GlobalSymbol> ::= <SubroutineDecl> | <SubroutineDef> | <FunctionDecl> | <FunctionDef> | <VariableDecl>
+<SubroutineProto> ::= SUB IDENTIFIER "(" <ParametersList> ")"
+<FunctionProto> ::= FUNCTION <Varname> "(" <ParametersList> ")"
+<SubroutineDef> ::= <SubroutineProto> <Statements> END SUB
+<FunctionDef> ::= <FunctionProto> <Statements> END FUNCTION
+<SubroutineDecl> ::= DECLARE <SubroutineProto>
+<FunctionDecl> ::= DECLARE <FunctionProto>
+<VariableDecl> ::= DIM <VarnameOrArrayArg> <VariableInit> 
+<VariableInit> ::= "=" <Expr> | "=" <InitializerList> | eps
+<InitializerList> ::= "{" <InitializerListValues> "}"
+<InitializerListValues> ::= <InitializerListValue>","<InitializerListValues> | <InitializerListValue>
+<InitializerListValue> ::= <Expr> | <InitializerList>
+<ParametersList> ::= <VarnameOrArrayParam>","<ParametersList> | <VarnameOrArrayParam> | eps
+<NonEmptyParametersList> ::= <VarnameOrArrayParam> <NonEmptyParametersList> | <VarnameOrArrayParam>
+<VarnameOrArrayParam> = <Varname> | <Varname>"("<CommaList>")"
+<CommaList> ::= ","<CommaList> | eps
+<ArgumentsList> ::= <Expr>","<NonEmptyArgumentsList> | <Expr> | eps
+<NonEmptyArgumentsList> ::= <Expr>","<NonEmptyArgumentsList> | <Expr>
+<VarnameOrArrayArg> = <Varname> | <Varname>"("<NonEmptyArgumentsList>")" | <Varname>"("<CommaList>")"
+<FuncCallOrArrayIndex> ::= <Varname>"(" <ArgumentsList> ")" | IDENTIFIER"(" <ArgumentsList> ")"
+<FuncCall> ::= PRINT <ArgumentsList>
+<Varname> ::= IDENTIFIER <Type>
+<Type> ::= "%" | "&" | "!" | "#" | "$"
+<Statements> ::= <Statement> <Statements> | <ExitStatement> | <Statement> | eps
+<NonEmptyStatements> ::= <Statement> <NonEmptyStatements> | <ExitStatement> | <Statement>
+<Statement> ::= <VariableDecl> | <AssignStatement> | <FuncCallOrArrayIndex> | <FuncCall> | <Loop> | <IfStatement>
+<AssignStatement> ::= <Varname>"="<Expr> | <FuncCallOrArrayIndex>"="<Expr>
+<IfStatement> ::= IF <Expr> Then <Statements> <ElseStatement> END IF
+<ExitStatement> ::= EXIT FOR | EXIT FOR <Varname> | EXIT DO | EXIT LOOP | EXIT SUB | EXIT FUNCTION
+<ElseStatement> ::= ELSE <Statements> | eps
+<Loop> ::= <ForLoop> | <WhileLoop>
+<ForLoop> ::= FOR <Varname> = <Expr> TO <Expr> <Statements> NEXT <Varname>
+<WhileLoop> ::= DO <PreOrPostLoop>
+<PreOrPostLoop> ::= WHILE <PreLoop> | UNTIL <PreLoop> | <PostLoop>
+<PreLoop> ::= <Expr> <Statements> LOOP 
+<PostLoop> ::= <Statements> LOOP <PostLoopExpr>
+<PostLoopExpr> ::= WHILE <Expr> | UNTIL <Expr> | eps
+<Expr> ::= <ArithmExpr> | <ArithmExpr> <CmpOp> <ArithmExpr>
+<CmpOp> ::= > | < | >= | <= | = | <>
+<ArithmExpr> ::= <Term> | <AddOp> <Term> | <ArithmExpr> <AddOp> <Term>
+<AddOp> ::= + | -
+<Term> ::= <Power> | <Term> * <Power> | <Term> / <Power>
+<Power> ::= <Varname> | <Const> | ( <Expr> ) | <FuncCallOrArrayIndex>
+<Const> ::= INT_CONST | REAL_CONST | STRING_CONST

@@ -1,0 +1,2 @@
+Function Join$(sep$, items$())
+End Function

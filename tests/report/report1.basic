@@ -1,0 +1,5 @@
+Function Join$(sep$, items$())
+    For i% = 2 To Len%(items$)
+        i% = i%
+    Next i%
+End Function

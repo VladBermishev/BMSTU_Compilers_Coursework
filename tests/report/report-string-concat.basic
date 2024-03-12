@@ -1,0 +1,4 @@
+Function Join$(items$())
+    c$ = items$(1) + items$(2)
+    Print c$
+End Function

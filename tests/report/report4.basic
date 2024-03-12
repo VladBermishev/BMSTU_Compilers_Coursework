@@ -1,0 +1,7 @@
+Function Join$()
+    For i% = 2 To 10
+        If i% = 10 Then
+            Exit for i%
+        End If
+    Next i%
+End Function

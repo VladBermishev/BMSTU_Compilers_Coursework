@@ -1,0 +1,8 @@
+Function Join$(sep$, items$())
+    i% = 0
+    If Len%(items$) = 1 Then
+        i% = 1
+    Else
+        i% = 2
+    End If
+End Function
