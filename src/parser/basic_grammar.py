@@ -1,7 +1,7 @@
-import parser_edsl as pe
+from src.parser import parser_edsl as pe
 import re
-from ast import *
-from basic_types import *
+from src.parser.basic_ast import *
+from src.parser.basic_types import *
 
 def make_keyword(image):
     return pe.Terminal(image, image, lambda name: None, re_flags=re.IGNORECASE, priority=10)

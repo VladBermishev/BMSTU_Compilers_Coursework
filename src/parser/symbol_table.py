@@ -1,4 +1,4 @@
-from errors import RedefinitionError
+from src.parser.errors import RedefinitionError
 from enum import Enum
 
 

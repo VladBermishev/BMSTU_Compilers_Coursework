@@ -1,17 +1,13 @@
 import abc
 import itertools
-import math
 import typing
 from dataclasses import dataclass
-from typing import Tuple, List
-
 from llvmlite.ir import FunctionType
-
-from errors import *
-from basic_types import *
-from symbol_table import SymbolTable, Symbol, SymbolTableBlockType, SymbolTableLLVMEntry
+from src.parser.errors import *
+from src.parser.basic_types import *
+from src.parser.symbol_table import SymbolTable, Symbol, SymbolTableBlockType, SymbolTableLLVMEntry
 from llvmlite import ir, binding
-from global_constructor import GlobalConstructor, label_suffix, gep_opaque
+from src.parser.global_constructor import GlobalConstructor, label_suffix, gep_opaque
 
 
 class Expr(abc.ABC):
@@ -21,17 +17,11 @@ class Expr(abc.ABC):
     def relax(self, symbol_table: SymbolTable, lvalue=True):
         return self
 
-    def constant_propagation(self):
-        return self
-
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         return self
 
 
 class Statement(abc.ABC):
-
-    def constant_propagation(self):
-        return self
 
     def codegen(self, symbol_table: SymbolTable):
         return self
@@ -93,9 +83,6 @@ class ConstExpr(Expr):
         value = value[1:-1].replace("\\n", '\n').replace("\\t", "    ")
         return ConstExpr(cvalue.start, value, StringT(is_const=True, len=len(value)))
 
-    def constant_propagation(self):
-        return self
-
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         if self.type == StringT():
             if symbol_table.block_type == SymbolTableBlockType.GlobalBlock:
@@ -149,9 +136,6 @@ class Variable:
     def symbol(self):
         return Symbol(self.name, self.type, False)
 
-    def constant_propagation(self):
-        return self
-
 
     """ I assume that would be called only from expressions codegen """
     def codegen(self, symbol_table, lvalue: bool = False):
@@ -183,12 +167,6 @@ class Array(Variable):
             self.size[idx] = expr.relax(symbol_table, lvalue=False)
             if not isinstance(self.size[idx].type, IntegralT):
                 raise ArrayNotIntInit(self.pos, self.size[idx].type)
-        return self
-
-    def constant_propagation(self):
-        for idx, sz in enumerate(self.size):
-            if isinstance(sz, Expr):
-                self.size[idx] = sz.constant_propagation()
         return self
 
     """ I assume that would be called only from expressions codegen """
@@ -235,9 +213,6 @@ class FunctionProto:
                 var.type.is_function_param = True
         return self
 
-    def constant_propagation(self):
-        return self
-
     def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
         va_cnt = sum(1 if isinstance(arg.type, VariadicArgumentT) else 0 for arg in self.args)
         arguments = []
@@ -275,10 +250,6 @@ class FunctionDecl:
         if not lookup_result:
             symbol_table.add(symbol)
         self.proto = self.proto.relax(symbol_table)
-        return self
-
-    def constant_propagation(self):
-        self.proto = self.proto.constant_propagation()
         return self
 
     def symbol(self):
@@ -326,12 +297,6 @@ class FunctionDef:
             body_symbol_table.add(var.symbol())
         for idx, stmt in enumerate(self.body):
             self.body[idx] = stmt.relax(body_symbol_table)
-        return self
-
-    def constant_propagation(self):
-        self.proto.constant_propagation()
-        for stmt in self.body:
-            stmt.constant_propagation()
         return self
 
     def symbol(self):
@@ -404,9 +369,6 @@ class SubroutineProto:
                 var.type.is_function_param = True
         return self
 
-    def constant_propagation(self):
-        return self
-
     def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
         va_cnt = sum(1 if isinstance(arg.type, VariadicArgumentT) else 0 for arg in self.args)
         arguments = []
@@ -443,10 +405,6 @@ class SubroutineDecl:
         if not lookup_result:
             symbol_table.add(symbol)
         self.proto = self.proto.relax(symbol_table)
-        return self
-
-    def constant_propagation(self):
-        self.proto.constant_propagation()
         return self
 
     def symbol(self):
@@ -490,12 +448,6 @@ class SubroutineDef:
             body_symbol_table.add(var.symbol())
         for idx, stmt in enumerate(self.body):
             self.body[idx] = stmt.relax(body_symbol_table)
-        return self
-
-    def constant_propagation(self):
-        self.proto.constant_propagation()
-        for stmt in self.body:
-            stmt.constant_propagation()
         return self
 
     def symbol(self):
@@ -558,15 +510,6 @@ class InitializerList:
             if common_type != val.type:
                 raise InappropriateInitializerList(self.pos, common_type, val.type)
         self.type = common_type
-        return self
-
-
-    def constant_propagation(self):
-        for idx, val in enumerate(self.values):
-            if isinstance(val, Expr):
-                self.values[idx] = val.constant_propagation()
-            else:
-                val.constant_propagation()
         return self
 
     def size(self):
@@ -639,12 +582,6 @@ class VariableDecl:
                     self.variable.size[idx] = self.variable.size[idx].value
             symbol_table.add(self.variable.symbol())
             self.variable = self.variable.relax(symbol_table)
-        return self
-
-    def constant_propagation(self):
-        self.variable.constant_propagation()
-        if self.init_value:
-            self.init_value.constant_propagation()
         return self
 
     def __check_sizes(self, expected_size, given_size):
@@ -754,11 +691,6 @@ class FuncCallOrArrayIndex:
                 return result.relax(symbol_table)
         return self
 
-    def constant_propagation(self):
-        for idx, arg in enumerate(self.args):
-            self.args[idx] = arg.constant_propagation()
-        return self
-
 
 @dataclass
 class FuncCall:
@@ -803,11 +735,6 @@ class FuncCall:
                     break
             if not lookup_result and not func_subst:
                 raise UndefinedFunction(self.pos, self.name, self.symbol().type)
-        return self
-
-    def constant_propagation(self):
-        for idx, arg in enumerate(self.args):
-            self.args[idx] = arg.constant_propagation()
         return self
 
     def symbol(self):
@@ -925,11 +852,6 @@ class ArrayIndex:
                 self.type = ArrayT(self.name.type,
                                    lookup_result.type.size[len(self.args):len(lookup_result.type.size)],
                                    lookup_result.type.is_function_param)
-        return self
-
-    def constant_propagation(self):
-        for idx, arg in enumerate(self.args):
-            self.args[idx] = arg.constant_propagation()
         return self
 
     def symbol(self):
@@ -1118,12 +1040,6 @@ class AssignStatement(Statement):
             raise ConversionError(self.pos, self.expr.type, self.variable.type)
         return self
 
-    def constant_propagation(self):
-        if isinstance(self.variable, FuncCallOrArrayIndex):
-            self.variable = self.variable.constant_propagation()
-        self.expr = self.expr.constant_propagation()
-        return self
-
     def codegen(self, symbol_table: SymbolTable):
         const_zero = ir.Constant(ir.IntType(32), 0)
         variable = self.variable.codegen(symbol_table, True)
@@ -1181,13 +1097,6 @@ class ForLoop(Statement):
         for_block = symbol_table.new_local(SymbolTableBlockType.ForLoopBlock, block_obj=self.variable)
         for idx, stmt in enumerate(self.body):
             self.body[idx] = stmt.relax(for_block)
-        return self
-
-    def constant_propagation(self):
-        self.start = self.start.constant_propagation()
-        self.end = self.end.constant_propagation()
-        for stmt in self.body:
-            stmt.constant_propagation()
         return self
 
     def codegen(self, symbol_table: SymbolTable):
@@ -1275,13 +1184,6 @@ class WhileLoop(Statement):
             self.body[idx] = stmt.relax(while_block)
         return self
 
-    def constant_propagation(self):
-        if self.condition:
-            self.condition = self.condition.constant_propagation()
-        for stmt in self.body:
-            stmt.constant_propagation()
-        return self
-
     def codegen(self, symbol_table: SymbolTable):
         if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
             if isinstance(symbol_table.llvm.builder.function, ir.Function):
@@ -1356,10 +1258,6 @@ class IfElseStatement(Statement):
         else_block = symbol_table.new_local(SymbolTableBlockType.IfElseBlock)
         for idx, stmt in enumerate(self.else_branch):
             self.else_branch[idx] = stmt.relax(else_block)
-        return self
-
-    def constant_propagation(self):
-        self.condition = self.condition.constant_propagation()
         return self
 
     def codegen(self, symbol_table: SymbolTable):
@@ -1457,16 +1355,6 @@ class UnaryOpExpr(Expr):
         self.type = self.unary_expr.type
         return self
 
-    def constant_propagation(self):
-        self.unary_expr = self.unary_expr.constant_propagation()
-        if isinstance(self.unary_expr, ConstExpr):
-            if self.unary_expr.type != StringT():
-                if isinstance(self.unary_expr.type, IntegralT):
-                    return ConstExpr(self.pos, int(f"{self.op}{self.unary_expr.value}"), self.unary_expr.type)
-                elif isinstance(self.unary_expr.type, FloatingPointT):
-                    return ConstExpr(self.pos, float(f"{self.op}{self.unary_expr.value}"), self.unary_expr.type)
-        return self
-
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         expr_val = self.unary_expr.codegen(symbol_table, False)
         if self.op == '-':
@@ -1517,25 +1405,6 @@ class BinOpExpr(Expr):
             raise BinBadType(self.pos, self.left.type, self.op, self.right.type)
         return self
 
-    def constant_propagation(self):
-        self.left = self.left.constant_propagation()
-        self.right = self.right.constant_propagation()
-        if isinstance(self.left, ConstExpr) and isinstance(self.right, ConstExpr):
-            if self.left.type == StringT() and self.right.type == StringT() and self.op == '+':
-                return ConstExpr(self.pos, f"{self.left.value}{self.right.value}", StringT())
-            elif isinstance(self.left.type, NumericT) and isinstance(self.right.type, NumericT):
-                if self.op in ('>', '<', '>=', '<=', '=', '<>'):
-                    self.op = "!=" if self.op == "<>" else self.op
-                    self.op = "==" if self.op == "=" else self.op
-                    return ConstExpr(self.pos,
-                                     1 if eval(f"{self.left.value}{self.op}{self.right.value}") else 0,
-                                     BoolT())
-                elif self.op in ('+', '-', '*', '/'):
-                    return ConstExpr(self.pos,
-                                     eval(f"{self.left.value}{self.op}{self.right.value}"),
-                                     self.left.type if self.left.type.priority > self.right.type.priority else self.right.type)
-        return self
-
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         lhs_val = self.left.codegen(symbol_table, False)
         rhs_val = self.right.codegen(symbol_table, False)
@@ -1575,8 +1444,7 @@ class Program:
         global_decls = attrs[0]
         declarations = Program.standart_library() + global_decls
         program = Program(declarations, SymbolTable(block_type=SymbolTableBlockType.GlobalBlock))
-        program = program.constant_propagation()
-        program = program.relax()
+        #program = program.relax()
         return program
 
     def relax(self):
@@ -1584,15 +1452,10 @@ class Program:
             self.decls[idx] = decl.relax(self.symbol_table)
         return self
 
-    def constant_propagation(self):
-        for idx, decl in enumerate(self.decls):
-            self.decls[idx] = decl.constant_propagation()
-        return self
-
     def codegen(self, module_name=None):
         program_module = ir.Module(name=module_name if module_name else __file__)
         program_module.triple = binding.get_default_triple()
-        program_module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
+        program_module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8  :16:32:64-S128"
         global_constr = GlobalConstructor(program_module, "variable_decl_constructor")
         global_constr_sub = ir.Function(program_module, ir.FunctionType(ir.VoidType(), []), "variable_decl_constructor")
         global_builder = ir.IRBuilder(global_constr_sub.append_basic_block("entry"))

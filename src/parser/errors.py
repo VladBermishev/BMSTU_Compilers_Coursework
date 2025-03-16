@@ -1,4 +1,4 @@
-import parser_edsl as pe
+import src.parser.parser_edsl as pe
 
 
 class SemanticError(pe.Error):
