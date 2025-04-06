@@ -1,6 +1,12 @@
 import enum
 from llvmlite import ir
 
+class WhileType(enum.Enum):
+    Endless = 0
+    PreUntil = 1
+    PreWhile = 2
+    PostUntil = 3
+    PostWhile = 4
 
 class Type:
     name = "undefined"
@@ -335,9 +341,5 @@ class ProcedureT(Type):
         return result
 
 
-class WhileType(enum.Enum):
-    Endless = 0
-    PreUntil = 1
-    PreWhile = 2
-    PostUntil = 3
-    PostWhile = 4
+def common_type(lhs_type: Type, rhs_type: Type):
+    pass

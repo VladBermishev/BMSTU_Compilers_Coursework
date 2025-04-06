@@ -3,6 +3,8 @@ import itertools
 import typing
 from dataclasses import dataclass
 from llvmlite.ir import FunctionType
+
+from src.parser.analyzers.is_const_expr import IsConstExpr
 from src.parser.errors import *
 from src.parser.basic_types import *
 from src.parser.symbol_table import SymbolTable, Symbol, SymbolTableBlockType, SymbolTableLLVMEntry
@@ -588,7 +590,7 @@ class VariableDecl:
         if len(expected_size) != len(given_size):
             raise InitializationLengthMismatchError(self.pos, expected_size, given_size)
         for sz in expected_size:
-            if not isinstance(sz, ConstExpr):
+            if not IsConstExpr(sz):
                 raise InitializationNonConstSize(sz.pos, sz)
             elif sz.value <= 0:
                 raise InitializationNegativeSize(sz.pos, sz)
@@ -1336,6 +1338,12 @@ class IfElseStatement(Statement):
 
 
 @dataclass
+class ImplicitTypeCast(Expr):
+    pos: pe.Position
+    type: Type
+    expr: Expr
+
+@dataclass
 class UnaryOpExpr(Expr):
     pos: pe.Position
     op: str
@@ -1444,7 +1452,7 @@ class Program:
         global_decls = attrs[0]
         declarations = Program.standart_library() + global_decls
         program = Program(declarations, SymbolTable(block_type=SymbolTableBlockType.GlobalBlock))
-        #program = program.relax()
+        program = program.relax()
         return program
 
     def relax(self):

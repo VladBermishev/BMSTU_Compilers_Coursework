@@ -6,7 +6,6 @@ set(CXX_SOURCES_NAMES "main")
 
 add_executable(${PROJECT_NAME} main.cpp)
 
-
 foreach (name ${CXX_SOURCES_NAMES})
     add_custom_command(
             OUTPUT

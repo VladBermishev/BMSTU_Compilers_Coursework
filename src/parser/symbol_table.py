@@ -15,9 +15,9 @@ class SymbolTableBlockType(Enum):
 
 class Symbol:
 
-    def __init__(self, varname, Tp, external=False, assoc_obj: object = None):
-        self.name = varname
-        self.type = Tp
+    def __init__(self, symbol_name, symbol_type, external=False, assoc_obj: object = None):
+        self.name = symbol_name
+        self.type = symbol_type
         self.external = external
         self.llvm_obj = assoc_obj
 
