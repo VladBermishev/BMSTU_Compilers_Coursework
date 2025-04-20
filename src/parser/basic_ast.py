@@ -1171,10 +1171,10 @@ class WhileLoop(Statement):
     body: list[Statement]
     type: WhileType
 
-    def __init__(self, body, condition, type_):
+    def __init__(self, body, condition, loop_type):
         self.body = body
         self.condition = condition
-        self.type = type_
+        self.type = loop_type
 
     def relax(self, symbol_table: SymbolTable):
         if self.condition:
