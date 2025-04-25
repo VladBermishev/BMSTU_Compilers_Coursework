@@ -40,7 +40,7 @@ class SRProgram:
 
 class SRFunctionDef:
     @staticmethod
-    def transform(node: basic_ast.FunctionDef, st: SymbolTable = None, _add_func_ret = True):
+    def transform(node: basic_ast.FunctionDef, st: SymbolTable = None, _add_func_ret=True):
         result = node
         symbol = SymbolFactory.create(result)
         lookup_result = st.qnl(STLookupStrategy(symbol, STLookupScope.Global))

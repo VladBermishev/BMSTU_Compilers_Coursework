@@ -1,6 +1,7 @@
 from src.parser.analyzers.symbol_table import *
 from src.parser.basic_ast import *
 
+
 class SymbolFactory:
     @staticmethod
     def create(node):

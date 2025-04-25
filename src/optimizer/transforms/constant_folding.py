@@ -63,6 +63,7 @@ class CFFallThrough:
                 result.condition = CFExpr.transform(result.condition)
         return result
 
+
 class CFExpr:
     @staticmethod
     def transform(node):
@@ -76,6 +77,7 @@ class CFExpr:
                 result = CFBinaryExpr.transform(result)
         return result
 
+
 class CFUnaryExpr:
     @staticmethod
     def transform(node):
@@ -84,12 +86,13 @@ class CFUnaryExpr:
         if isinstance(result.unary_expr, basic_ast.ConstExpr):
             if result.unary_expr.type != basic_types.StringT():
                 if isinstance(result.unary_expr.type, basic_types.IntegralT):
-                    return basic_ast.ConstExpr(result.pos, int(f"{result.op}{result.unary_expr.value}"),
+                    result = basic_ast.ConstExpr(result.pos, int(f"{result.op}{result.unary_expr.value}"),
                                                result.unary_expr.type)
                 elif isinstance(result.unary_expr.type, basic_types.FloatingPointT):
-                    return basic_ast.ConstExpr(result.pos, float(f"{result.op}{result.unary_expr.value}"),
+                    result = basic_ast.ConstExpr(result.pos, float(f"{result.op}{result.unary_expr.value}"),
                                                result.unary_expr.type)
         return result
+
 
 class CFBinaryExpr:
     @staticmethod
@@ -99,7 +102,7 @@ class CFBinaryExpr:
         result.right = CFExpr.transform(result.right)
         if isinstance(result.left, basic_ast.ConstExpr) and isinstance(result.right, basic_ast.ConstExpr):
             if result.left.type == basic_types.StringT() and result.right.type == basic_types.StringT() and result.op == '+':
-                return basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT())
+                result = basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT())
             elif isinstance(result.left.type, basic_types.NumericT) and isinstance(result.right.type, basic_types.NumericT):
                 match result.op:
                     case op if op in ('>', '<', '>=', '<=', '=', '<>'):
