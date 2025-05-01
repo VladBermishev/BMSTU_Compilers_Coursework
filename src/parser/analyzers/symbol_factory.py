@@ -16,3 +16,4 @@ class SymbolFactory:
                 return result
             case t if t is Variable:
                 return Symbol(node.name, node.type, node.pos)
+        return None

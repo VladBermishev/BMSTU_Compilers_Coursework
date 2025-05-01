@@ -10,3 +10,4 @@ def IsConstExpr(ast_node: basic_ast.Expr):
             return IsConstExpr(ast_node.unary_expr)
         case t if t is basic_ast.BinOpExpr:
             return IsConstExpr(ast_node.left) and IsConstExpr(ast_node.right)
+    return False

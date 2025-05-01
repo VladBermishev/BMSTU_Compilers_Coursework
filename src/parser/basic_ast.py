@@ -1,5 +1,6 @@
 import abc
 import itertools
+import string
 import typing
 from dataclasses import dataclass
 from llvmlite.ir import FunctionType
@@ -66,24 +67,27 @@ class ConstExpr(Expr):
     value: typing.Any
     type: Type
 
+    @staticmethod
     @pe.ExAction
     def createInt(attrs, coords, res_coord):
         value = attrs[0]
         cvalue = coords[0]
         return ConstExpr(cvalue.start, value, IntegerT())
 
+    @staticmethod
     @pe.ExAction
     def createFl(attrs, coords, res_coord):
         value = attrs[0]
         cvalue = coords[0]
         return ConstExpr(cvalue.start, value, FloatT())
 
+    @staticmethod
     @pe.ExAction
     def createStr(attrs, coords, res_coord):
         value = attrs[0]
         cvalue = coords[0]
-        value = value[1:-1].replace("\\n", '\n').replace("\\t", "    ")
-        return ConstExpr(cvalue.start, value, StringT(is_const=True, len=len(value)))
+        value = value[1:-1].replace("\\n", '\n').replace("\\t", ' ' * 4)
+        return ConstExpr(cvalue.start, value, StringT(length=len(value)))
 
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         if self.type == StringT():
@@ -154,13 +158,19 @@ class Array(Variable):
 
     @staticmethod
     @pe.ExAction
-    def create(attrs, coords, res_coord):
+    def create_variable(attrs, coords, res_coord):
         varname, sizes = attrs
         cvarname, cop, cexpr, ccp = coords
-        size = sizes
-        if isinstance(sizes, int):
-            size = [0 for _ in range(sizes)]
-        return Array(cvarname.start, varname, ArrayT(varname.type, size), size)
+        return Array(cvarname.start, varname, ArrayT(varname.type, sizes), sizes)
+
+    @staticmethod
+    @pe.ExAction
+    def create_param(attrs, coords, res_coord):
+        varname, dimensions = attrs
+        cvarname, cop, cexpr, ccp = coords
+        size = [0] * dimensions
+        expression_sizes = [ConstExpr(cop.start, 0, IntegerT())] * dimensions
+        return Array(cvarname.start, varname, ArrayT(varname.type, size), expression_sizes)
 
     def relax(self, symbol_table: SymbolTable, lvalue=True):
         if isinstance(self.size[0], int):
@@ -202,24 +212,18 @@ class FunctionProto:
         return FunctionProto(pe.Position(-1,-1,-1), varname, args, ProcedureT(varname.type, [arg.type for arg in args]))
 
     def relax(self, symbol_table: SymbolTable):
-        va_cnt = sum(1 if isinstance(arg.type, VariadicArgumentT) else 0 for arg in self.args)
-        if va_cnt > 1:
-            raise MultipleVariadicArgumentsInProtoError(self.name.pos)
         names = [self.name]
         for idx, var in enumerate(self.args):
             if var.name in names:
                 raise RedefinitionError(var.pos, var.name, names[names.index(var.name)].pos)
-            if isinstance(var, VariadicArgumentT) and idx != len(self.args) - 1:
-                raise VariadicArgumentsInProtoNotLastError(var.pos)
             if isinstance(var.type, ArrayT):
                 var.type.is_function_param = True
         return self
 
     def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
-        va_cnt = sum(1 if isinstance(arg.type, VariadicArgumentT) else 0 for arg in self.args)
         arguments = []
         symbols = []
-        arg_list = self.args[:-1] if va_cnt > 0 else self.args
+        arg_list = self.args
         for arg in arg_list:
             arguments.append(arg.type.llvm_type())
             symbols.append(Symbol(arg.name, arg.type))
@@ -358,25 +362,18 @@ class SubroutineProto:
         return SubroutineProto(csub_kw.start, varname, args, ProcedureT(VoidT(), [arg.type for arg in args]))
 
     def relax(self, symbol_table: SymbolTable):
-        va_cnt = sum(1 if isinstance(arg.type, VariadicArgumentT) else 0 for arg in self.args)
-        if va_cnt > 1:
-            raise MultipleVariadicArgumentsInProtoError(self.name.pos)
         names = [self.name]
         for idx, var in enumerate(self.args):
             if var.name in names:
                 raise RedefinitionError(var.pos, var.name, names[names.index(var.name)].pos)
-            if isinstance(var, VariadicArgumentT) and idx != len(self.args) - 1:
-                raise VariadicArgumentsInProtoNotLastError(var.pos)
             if isinstance(var.type, ArrayT):
                 var.type.is_function_param = True
         return self
 
     def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
-        va_cnt = sum(1 if isinstance(arg.type, VariadicArgumentT) else 0 for arg in self.args)
         arguments = []
         symbols = []
-        arg_list = self.args[:-1] if va_cnt > 0 else self.args
-        for arg in arg_list:
+        for arg in self.args:
             arguments.append(arg.type.llvm_type())
             symbols.append(Symbol(arg.name, arg.type))
             if isinstance(arg.type, ArrayT):
@@ -500,7 +497,7 @@ class InitializerList:
     def relax(self, symbol_table: SymbolTable, lvalue: bool = False):
         common_type = None if len(self.values) == 0 else type(self.values[0])
         if not common_type:
-            return
+            return self
         for val in self.values:
             if common_type != type(val):
                 raise InappropriateInitializerList(self.pos, common_type, type(val))
@@ -723,7 +720,7 @@ class FuncCall:
             self.args[idx] = arg.relax(symbol_table, False)
         if self.name.name == "Print":
             for arg in self.args:
-                if not isinstance(arg.type, (NumericT, StringT)):
+                if not isinstance(arg.type, (NumericT, ConstantStringT, PointerT)):
                     raise UndefinedFunction(self.pos, self.name, ProcedureT(VoidT(), [arg.type]))
         else:
             lookup_result = symbol_table.lookup(self.symbol(), by_origin=False, accumulate=True)
@@ -1358,7 +1355,7 @@ class UnaryOpExpr(Expr):
 
     def relax(self, symbol_table: SymbolTable, lvalue=True):
         self.unary_expr = self.unary_expr.relax(symbol_table, lvalue)
-        if isinstance(self.unary_expr.type, StringT) or (not isinstance(self.unary_expr.type, NumericT)):
+        if isinstance(self.unary_expr.type, ArrayT) or (not isinstance(self.unary_expr.type, NumericT)):
             raise UnaryBadType(self.pos, self.unary_expr.type, self.op)
         self.type = self.unary_expr.type
         return self

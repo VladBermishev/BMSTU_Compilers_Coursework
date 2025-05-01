@@ -1,6 +1,5 @@
-from unittest import case
-
 from src.parser import basic_ast
+from src.parser.basic_ast_generator import ImplicitCastAstGenerator
 from src.parser.basic_types import *
 from src.parser.analyzers.symbol_factory import SymbolFactory
 from src.parser.analyzers.symbol_table import SymbolTable, Symbol, STLookupStrategy, STLookupScope, STBlockType
@@ -26,6 +25,9 @@ class SemanticRelaxTransform:
                 return SRFunctionDef.transform(node, st, _add_func_ret=False)
             case t if t is basic_ast.SubroutineProto:
                 return SRFunctionProto.transform(node, st)
+            case t if t is basic_ast.InitializerList:
+                return SRInitializerList.transform(node, st)
+        return None
 
 
 class SRProgram:
@@ -80,21 +82,46 @@ class SRFunctionProto:
     @staticmethod
     def transform(node: basic_ast.FunctionProto, st: SymbolTable = None):
         result = node
-        if sum(1 if isinstance(arg.type, VariadicArgumentT) else 0 for arg in result.args) > 1:
-            raise MultipleVariadicArgumentsInProtoError(result.name.pos)
-        names = [node.name]
-        for idx, var in enumerate(node.args):
+        names = [result.name]
+        for idx, var in enumerate(result.args):
             if var.name in names:
                 raise RedefinitionError(var.pos, var.name, names[names.index(var.name)].pos)
-            if isinstance(var, VariadicArgumentT) and idx != len(node.args) - 1:
-                raise VariadicArgumentsInProtoNotLastError(var.pos)
-            if isinstance(var.type, ArrayT):
-                var.type.is_function_param = True
         return result
 
 class SRInitializerList:
     @staticmethod
     def transform(node: basic_ast.InitializerList, st: SymbolTable = None):
         result = node
-
+        if not all(type(result.values[0]) == type(value) for value in result.values):
+            for value in result.values:
+                if type(result.values[0]) != type(value):
+                    raise InappropriateInitializerList(result.pos, type(result.values[0]), type(value))
+        for idx, value in enumerate(result.values):
+            result.values[idx] = SemanticRelaxTransform.transform(value, st=st)
+        if isinstance(result.values[0], basic_ast.InitializerList):
+            if not all(SRInitializerList.dimensions(result.values[0]) == SRInitializerList.dimensions(value) for value in result.values):
+                for value in result.values:
+                    if SRInitializerList.dimensions(result.values[0]) != SRInitializerList.dimensions(value):
+                        raise InappropriateInitializerList(result.pos, SRInitializerList.dimensions(result.values[0]), SRInitializerList.dimensions(value))
+        init_type = SRInitializerList.common_type(result)
+        if init_type:
+            result = ImplicitCastAstGenerator.generate(result, init_type)
         return result
+
+    @staticmethod
+    def dimensions(node: basic_ast.InitializerList):
+        if len(node.values) == 0:
+            return [0]
+        if isinstance(node.values[0], basic_ast.InitializerList):
+            return [len(node.values)] + SRInitializerList.dimensions(node.values[0])
+        else:
+            return [len(node.values)]
+
+    @staticmethod
+    def common_type(node: basic_ast.InitializerList):
+        if len(node.values) == 0:
+            return None
+        if isinstance(node.values[0], basic_ast.InitializerList):
+            return common_type(types=[SRInitializerList.common_type(value) for value in node.values])
+        else:
+            return common_type(types=[value.type for value in node.values])

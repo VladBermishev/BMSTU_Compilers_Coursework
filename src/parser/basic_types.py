@@ -1,5 +1,6 @@
 import enum
-from llvmlite import ir
+import typing
+
 
 class WhileType(enum.Enum):
     Endless = 0
@@ -7,6 +8,7 @@ class WhileType(enum.Enum):
     PreWhile = 2
     PostUntil = 3
     PostWhile = 4
+
 
 class Type:
     name = "undefined"
@@ -21,17 +23,12 @@ class Type:
     def default_value(self):
         return None
 
-    def castable_to(self, other_type):
-        raise NotImplementedError()
-
-    def cast_to(self, other_type, builder: ir.IRBuilder):
-        raise NotImplementedError()
-
     def __str__(self):
         return "Auto"
 
-    def llvm_type(self):
-        pass
+
+class ConstantT(Type):
+    name = "constant"
 
 
 class VoidT(Type):
@@ -41,12 +38,9 @@ class VoidT(Type):
     def __str__(self):
         return "void"
 
-    def castable_to(self, other_type):
-        return True
-
-    def llvm_type(self) -> ir.VoidType:
-        return ir.VoidType()
-
+class CharT(Type):
+    name = "char"
+    mangle_name = "C"
 
 class NumericT(Type):
     name = "numeric"
@@ -56,92 +50,17 @@ class NumericT(Type):
     def default_value(self):
         return 0
 
-    def castable_to(self, other_type):
-        return isinstance(other_type, NumericT) and self.priority <= other_type.priority
-
-    def cmp(self, op, builder: ir.IRBuilder, name: str = None):
-        raise NotImplementedError("cmp for NumericT")
-
-    def add(self, builder: ir.IRBuilder, name: str = None):
-        raise NotImplementedError("add for NumericT")
-
-    def sub(self, builder: ir.IRBuilder, name: str = None):
-        raise NotImplementedError("sub for NumericT")
-
-    def mul(self, builder: ir.IRBuilder, name: str = None):
-        raise NotImplementedError("mul for NumericT")
-
-    def div(self, builder: ir.IRBuilder, name: str = None):
-        raise NotImplementedError("div for NumericT")
-
-    def neg(self, builder: ir.IRBuilder, name: str = None):
-        raise NotImplementedError("neg for NumericT")
-
 
 class IntegralT(NumericT):
     name = "integral"
     mangle_suff = "N"
     priority = 0
 
-    def cast_to(self, other_type, builder: ir.IRBuilder):
-        if isinstance(other_type, IntegralT):
-            return lambda x: builder.zext(x, other_type.llvm_type())
-        elif isinstance(other_type, FloatingPointT):
-            return lambda x: builder.sitofp(x, other_type.llvm_type())
-        else:
-            return None
-
-    def cmp(self, op, builder: ir.IRBuilder, name: str = None):
-        op = "!=" if op == "<>" else op
-        op = "==" if op == "=" else op
-        return lambda lhs, rhs: builder.icmp_signed(op, lhs, rhs, name if name else '')
-
-    def add(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.add(lhs, rhs, name if name else '')
-
-    def sub(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.sub(lhs, rhs, name if name else '')
-
-    def mul(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.mul(lhs, rhs, name if name else '')
-
-    def div(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.sdiv(lhs, rhs, name if name else '')
-
-    def neg(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs: builder.neg(lhs, name if name else '')
-
 
 class FloatingPointT(NumericT):
     name = "floating_point"
     mangle_suff = "N"
     priority = 0
-
-    def cast_to(self, other_type, builder: ir.IRBuilder):
-        if isinstance(other_type, FloatingPointT):
-            return lambda x: builder.fpext(x, other_type.llvm_type())
-        else:
-            return None
-
-    def cmp(self, op, builder: ir.IRBuilder, name: str = None):
-        op = "!=" if op == "<>" else op
-        op = "==" if op == "=" else op
-        return lambda lhs, rhs: builder.fcmp_ordered(op, lhs, rhs, name if name else '')
-
-    def add(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.fadd(lhs, rhs, name if name else '')
-
-    def sub(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.fsub(lhs, rhs, name if name else '')
-
-    def mul(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.fmul(lhs, rhs, name if name else '')
-
-    def div(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs, rhs: builder.fdiv(lhs, rhs, name if name else '')
-
-    def neg(self, builder: ir.IRBuilder, name: str = None):
-        return lambda lhs: builder.fneg(lhs, name if name else '')
 
 
 class BoolT(IntegralT):
@@ -152,9 +71,6 @@ class BoolT(IntegralT):
     def __str__(self):
         return "Bool"
 
-    def llvm_type(self):
-        return ir.IntType(8)
-
 
 class IntegerT(IntegralT):
     name = "%"
@@ -163,9 +79,6 @@ class IntegerT(IntegralT):
 
     def __str__(self):
         return "Integer"
-
-    def llvm_type(self):
-        return ir.IntType(32)
 
 
 class LongT(IntegralT):
@@ -176,9 +89,6 @@ class LongT(IntegralT):
     def __str__(self):
         return "Long"
 
-    def llvm_type(self):
-        return ir.IntType(64)
-
 
 class FloatT(FloatingPointT):
     name = "!"
@@ -187,9 +97,6 @@ class FloatT(FloatingPointT):
 
     def __str__(self):
         return "Float"
-
-    def llvm_type(self):
-        return ir.FloatType()
 
 
 class DoubleT(FloatingPointT):
@@ -200,51 +107,14 @@ class DoubleT(FloatingPointT):
     def __str__(self):
         return "Double"
 
-    def llvm_type(self):
-        return ir.DoubleType()
-
-
-class StringT(Type):
-    name = "$"
-    mangle_suff = "S"
-    priority = 0
-
-    def __init__(self, is_const:bool = False, len:int = 0):
-        super().__init__()
-        self.is_const = is_const
-        self.len = len
-
-
-    def __str__(self):
-        return "String"
-
-    def default_value(self):
-        if self.is_const:
-            return bytearray([0] * ((self.len + 1) * 4))
-        else:
-            return None
-
-    def castable_to(self, other_type):
-        return isinstance(other_type, StringT)
-
-    def cast_to(self, other_type, builder: ir.IRBuilder):
-        pass
-
-    def llvm_type(self):
-        if self.is_const:
-            return ir.ArrayType(ir.IntType(32), self.len + 1)
-        else:
-            return ir.PointerType(ir.IntType(32))
-
 
 class ArrayT(Type):
     name = "array"
 
-    def __init__(self, valueT:Type, size: list[int], is_function_param: bool = False):
+    def __init__(self, valueT: Type, size: list[int]):
         self.type = valueT
         self.size = size
         self.mangle_suff = "A" + valueT.mangle_suff * len(size)
-        self.is_function_param = is_function_param
 
     def __eq__(self, other):
         if isinstance(other, ArrayT):
@@ -252,7 +122,8 @@ class ArrayT(Type):
             other_any = other.type == Type()
             if self_any or other_any:
                 return self.size == other.size if len(self.size) != 1 and len(other.size) != 1 else True
-            if isinstance(self.size[0], int) and isinstance(other.size[0], int) and self.is_function_param == other.is_function_param:
+            if (isinstance(self.size[0], int) and isinstance(other.size[0], int) and
+                    self.is_function_param == other.is_function_param):
                 return self.type == other.type and self.size == other.size
             else:
                 return self.type == other.type and len(self.size) == len(other.size)
@@ -269,41 +140,20 @@ class ArrayT(Type):
             return [ArrayT(self.type, self.size[1:]).default_value()] * sz
 
 
-    def llvm_type(self):
-        if self.is_function_param:
-            return self.llvm_type_ref()
-        else:
-            return self.llvm_type_init()
+class StringT(ArrayT):
+    name = "string"
+    mangle_suff = "S"
 
-    def llvm_type_init(self):
-        if len(self.size) == 1:
-            return ir.ArrayType(self.type.llvm_type(), self.size[0])
-        elif len(self.size) >= 1:
-            return ir.ArrayType(ArrayT(self.type, self.size[1:]).llvm_type_init(), self.size[0])
-
-    def llvm_type_ref(self):
-        if len(self.size) == 1:
-            return ir.PointerType(self.type.llvm_type(), self.size[0])
-        elif len(self.size) >= 1:
-            return ir.PointerType(ArrayT(self.type, self.size[1:]).llvm_type_ref(), self.size[0])
-
-    def cast_to(self, other_type, builder: ir.IRBuilder):
-        def casting(lhs_val_list, rhs_val_list):
-            result = []
-            for lhs_val, rhs_val in zip(lhs_val_list, rhs_val_list):
-                result.append(self.type.cast_to(other_type, builder)(lhs_val, rhs_val))
-            return result
-        return casting
-
-    def castable_to(self, other_type):
-        return self.size == other_type.size and self.type == other_type.type
+    def __init__(self, length=0):
+        super().__init__(CharT(), [length])
 
 
-class VariadicArgumentT(Type):
-    name = "..."
+class PointerT(Type):
+    name = "pointer"
 
-    def __str__(self):
-        return self.name
+    def __init__(self, valueT: Type):
+        self.type = valueT
+        self.mangle_suff = f"Ptr{{{valueT.mangle_suff}}}"
 
 
 class ProcedureT(Type):
@@ -314,32 +164,72 @@ class ProcedureT(Type):
         self.argsT = argsT
 
     def __eq__(self, other):
-        if isinstance(other, ProcedureT):
-            va_lhs = sum(1 if isinstance(arg, VariadicArgumentT) else 0 for arg in self.argsT)
-            va_rhs = sum(1 if isinstance(arg, VariadicArgumentT) else 0 for arg in other.argsT)
-            if va_lhs > 0 or va_rhs > 0:
-                result = True
-                for idx in range(min(len(self.argsT), len(other.argsT))):
-                    if isinstance(self.argsT[idx],  VariadicArgumentT) or isinstance(other.argsT[idx],  VariadicArgumentT):
-                        return result
-                    result &= self.argsT[idx] == other.argsT[idx]
-                return result
-            else:
-                result = self.retT == other.retT and len(self.argsT) == len(other.argsT)
-                return result and all([self.argsT[i] == other.argsT[i] for i in range(len(self.argsT))])
-        return False
+        if not isinstance(other, ProcedureT):
+            return False
+        result = self.retT == other.retT and len(self.argsT) == len(other.argsT)
+        return result and all([self.argsT[i] == other.argsT[i] for i in range(len(self.argsT))])
 
     def __str__(self):
         return f"{self.retT}(" + ','.join([str(v) for v in self.argsT]) + ")"
 
-    def castable_to(self, other_type):
-        result = self.retT == other_type.retT and len(self.argsT) == len(other_type.argsT)
-        if not result:
-            return False
-        for idx in range(len(self.argsT)):
-            result &= self.argsT[idx].castable_to(other_type.argsT[idx])
-        return result
+
+def __unroll_type_tree(tp: Type):
+    result = []
+    current_node = tp.__class__
+    while current_node != object:
+        result.append(current_node)
+        current_node = current_node.__base__
+    return result
 
 
-def common_type(lhs_type: Type, rhs_type: Type):
-    pass
+def __types_lca(lhs_type: Type, rhs_type: Type):
+    lhs_path, rhs_path = __unroll_type_tree(lhs_type), __unroll_type_tree(rhs_type)
+    idx = 0
+    while idx < min(len(lhs_path), len(rhs_path)) and lhs_path[-idx] == rhs_path[-idx]:
+        idx += 1
+    return lhs_path[1 - idx]
+
+
+def __common_type(lhs_type: Type, rhs_type: Type) -> typing.Union[Type | None]:
+    if lhs_type == rhs_type:
+        return lhs_type
+    lca_type = __types_lca(lhs_type, rhs_type)
+    if lca_type == NumericT or lca_type == IntegerT or lca_type == FloatT:
+        return lhs_type.priority if lhs_type.priority > rhs_type.priority else rhs_type.priority
+    elif lca_type == PointerT:
+        ptr_type = __common_type(lhs_type.type, rhs_type.type)
+        if ptr_type is None:
+            return None
+        return PointerT(ptr_type)
+    elif lca_type == ProcedureT:
+        return_type = __common_type(lhs_type.retT, rhs_type.retT)
+        if return_type is None or len(lhs_type.argsT) != len(rhs_type.argsT):
+            return None
+        args_type = [__common_type(lhs_arg_type, rhs_arg_type) for lhs_arg_type, rhs_arg_type in zip(lhs_type.argsT, rhs_type.argsT)]
+        if any([arg_type is None for arg_type in args_type]):
+            return None
+        return ProcedureT(return_type, args_type)
+    elif lca_type == ArrayT:
+        arr_type = __common_type(lhs_type.type, rhs_type.type)
+        if arr_type is None or lhs_type.size != rhs_type.size:
+            return None
+        return ArrayT(arr_type, lhs_type.size)
+    return None
+
+def common_type(*args, types: typing.List[Type]=None):
+    result = None
+    if len(args) > 0:
+        result = args[0]
+        if len(args) > 1:
+            result = __common_type(args[0], args[1])
+            for idx in range(2, len(args)):
+                result = __common_type(result, args[idx])
+    if types is not None and len(types) > 0:
+        if result is not None:
+            types = [result] + types
+        result = types[0]
+        if len(types) > 1:
+            result = __common_type(types[0], types[1])
+            for idx in range(2, len(types)):
+                result = __common_type(result, args[idx])
+    return result

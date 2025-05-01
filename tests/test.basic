@@ -8,3 +8,9 @@ Function Join$(sep$, items$())
         Join$ = Join$ + sep$ + items$(i%)
     Next i%
 End Function
+
+Sub A()
+    Print "ABCDEF"
+    smth$ = "ABCDEF" ' dim smth^(7) = {A, B, C, D, E, F, 0}
+    Print smth$
+End Sub
