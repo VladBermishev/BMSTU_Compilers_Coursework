@@ -194,6 +194,10 @@ class Array(Variable):
                 return ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, lookup_result.llvm_obj, [ir.Constant(ir.IntType(32), 0)])
 
 @dataclass
+class ArrayReference(Variable):
+    pass
+
+@dataclass
 class FunctionProto:
     pos: pe.Position
     name: Varname
@@ -537,16 +541,12 @@ class VariableDecl:
     @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
-        var, var_ini = attrs[0], None
-        if len(attrs) > 1:
-            var_ini = attrs[1]
-        cop, cvalues, ccp = coords
+        var, var_ini = attrs[0], attrs[1] if len(attrs) > 1 else None
         cdim_kw, cvar, cvar_init = coords
         return VariableDecl(cdim_kw.start, var, var_ini)
 
     def relax(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup(self.variable.symbol(), local=True, by_type=False, by_origin=False)
-        if lookup_result:
+        if (lookup_result := symbol_table.lookup(self.variable.symbol(), local=True, by_type=False, by_origin=False)) is not None:
             raise RedefinitionError(self.pos, self.variable.name, lookup_result.name.pos)
         if self.init_value:
             self.init_value = self.init_value.relax(symbol_table)
@@ -554,7 +554,7 @@ class VariableDecl:
                 if not self.init_value.type.castable_to(self.variable.type.type):
                     raise ConversionError(self.pos, self.init_value.type, self.variable.type.type)
                 if isinstance(self.init_value, Expr):
-                    raise InitializationTypeError(self.pos, self.variable.type, self.init_value.type)
+                    raise InappropriateInitializerList(self.pos, f"InitializerList{{{self.variable.type}}}", self.init_value)
                 else:
                     self.variable = self.variable.relax(symbol_table)
                     self.variable.size = self.__check_sizes(self.variable.size, self.init_value.size())
@@ -690,6 +690,18 @@ class FuncCallOrArrayIndex:
                 return result.relax(symbol_table)
         return self
 
+
+@dataclass
+class PrintCall:
+    pos: pe.Position
+    expr: list[Expr]
+
+    @staticmethod
+    @pe.ExAction
+    def create(attrs, coords, res_coord):
+        args = attrs[0]
+        cprint, cargs = coords
+        return PrintCall(cprint.start, args)
 
 @dataclass
 class FuncCall:

@@ -1,4 +1,5 @@
 from src.parser import basic_ast
+from src.parser.analyzers.is_const_expr import IsConstExpr
 from src.parser.basic_ast_generator import ImplicitCastAstGenerator
 from src.parser.basic_types import *
 from src.parser.analyzers.symbol_factory import SymbolFactory
@@ -7,7 +8,6 @@ from src.parser.errors import *
 
 
 class SemanticRelaxTransform:
-
     @staticmethod
     def transform(node, st: SymbolTable = None):
         match type(node):
@@ -27,6 +27,20 @@ class SemanticRelaxTransform:
                 return SRFunctionProto.transform(node, st)
             case t if t is basic_ast.InitializerList:
                 return SRInitializerList.transform(node, st)
+            case t if t is basic_ast.VariableDecl:
+                return SRVariableDecl.transform(node, st)
+            case t if t is basic_ast.Array:
+                return SRArray.transform(node, st)
+            case t if t is basic_ast.ArrayReference:
+                return SRArray.transform(node, st)
+            case t if t is basic_ast.Variable:
+                return SRVariable.transform(node, st)
+            case t if t is basic_ast.FuncCallOrArrayIndex:
+                return SRFuncCallOrArrayIndex.transform(node, st)
+            case t if t is basic_ast.FuncCall:
+                return SRFuncCall.transform(node, st)
+            case t if t is basic_ast.ArrayIndex:
+                return SRArrayIndex.transform(node, st)
         return None
 
 
@@ -75,7 +89,7 @@ class SRFunctionDecl:
             raise RedefinitionError(result.pos, result.proto.name, lookup_result.first().name.pos)
         elif lookup_result.empty():
             st.add(symbol)
-        result.proto = SemanticRelaxTransform.transform(result.proto, st=st)
+        result.proto = SemanticRelaxTransform.transform(result.proto, st)
         return result
 
 class SRFunctionProto:
@@ -97,15 +111,12 @@ class SRInitializerList:
                 if type(result.values[0]) != type(value):
                     raise InappropriateInitializerList(result.pos, type(result.values[0]), type(value))
         for idx, value in enumerate(result.values):
-            result.values[idx] = SemanticRelaxTransform.transform(value, st=st)
+            result.values[idx] = SemanticRelaxTransform.transform(value, st)
         if isinstance(result.values[0], basic_ast.InitializerList):
             if not all(SRInitializerList.dimensions(result.values[0]) == SRInitializerList.dimensions(value) for value in result.values):
                 for value in result.values:
                     if SRInitializerList.dimensions(result.values[0]) != SRInitializerList.dimensions(value):
                         raise InappropriateInitializerList(result.pos, SRInitializerList.dimensions(result.values[0]), SRInitializerList.dimensions(value))
-        init_type = SRInitializerList.common_type(result)
-        if init_type:
-            result = ImplicitCastAstGenerator.generate(result, init_type)
         return result
 
     @staticmethod
@@ -125,3 +136,124 @@ class SRInitializerList:
             return common_type(types=[SRInitializerList.common_type(value) for value in node.values])
         else:
             return common_type(types=[value.type for value in node.values])
+
+class SRVariableDecl:
+    @staticmethod
+    def transform(node: basic_ast.VariableDecl, st: SymbolTable = None):
+        result = node
+        symbol = SymbolFactory.create(node.variable)
+        if st is not None and not (lookup_result := st.qnl(STLookupStrategy(symbol, STLookupScope.Local))).empty():
+            raise RedefinitionError(node.pos, node.variable.name, lookup_result.first().name.pos)
+        if node.init_value is not None:
+            return SRVariableDecl.__transfrom_init_value(node, st)
+        if isinstance(node.variable.type, basic_ast.Array):
+            if isinstance(node.variable.type.size[0], int):
+                raise InitializationUndefinedLengthError(node.pos, node.variable.size)
+            for idx, sz in enumerate(node.variable.size):
+                if not (isinstance(sz, basic_ast.ConstExpr) and sz.type == IntegralT()):
+                    raise InitializationUndefinedLengthError(node.pos, node.variable.size)
+            result.variable = SemanticRelaxTransform.transform(result.variable, st)
+        st.add(symbol)
+        return result
+
+    @staticmethod
+    def __transfrom_init_value(node: basic_ast.VariableDecl, st: SymbolTable = None):
+        result = node
+        result.init_value = SemanticRelaxTransform.transform(result.init_value, st)
+        if isinstance(result.variable, basic_ast.Array):
+            if not isinstance(result.init_value, basic_ast.InitializerList):
+                raise InappropriateInitializerList(result.pos, f"InitializerList{{{result.variable.type}}}", result.init_value)
+            implicit_type = common_type(result.variable.type, SRInitializerList.common_type(result.init_value))
+            if implicit_type is None or implicit_type != result.variable.type:
+                raise ConversionError(result.pos, result.init_value.type, result.variable.type.value_type)
+            elif implicit_type == result.variable.type:
+                result = ImplicitCastAstGenerator.generate(result, implicit_type)
+            result.variable = SemanticRelaxTransform.transform(result.variable, st)
+            result.variable.type.size = SRVariableDecl.__get_array_size(result)
+            result.variable.size = [basic_ast.ConstExpr(result.variable.pos, value, IntegerT()) for value in result.variable.type.size]
+        else:
+            init_type = SRInitializerList.common_type(result.init_value) if isinstance(result.init_value, basic_ast.InitializerList) else result.init_value.type
+            implicit_type = common_type(result.variable.type, init_type)
+            if implicit_type is None or implicit_type != result.variable.type:
+                raise ConversionError(result.pos, result.init_value.type, result.variable.type)
+            elif implicit_type == result.variable.type:
+                result = ImplicitCastAstGenerator.generate(result, implicit_type)
+            if isinstance(result.init_value, basic_ast.InitializerList):
+                list_size = SRInitializerList.dimensions(result.init_value)
+                expr_size = [basic_ast.ConstExpr(result.variable.pos, value, IntegerT()) for value in list_size]
+                result.variable = basic_ast.Array(result.variable.pos, result.variable.name, ArrayT(result.variable.type, list_size), expr_size)
+        st.add(SymbolFactory.create(result.variable))
+        return result
+
+    @staticmethod
+    def __get_array_size(node: basic_ast.VariableDecl):
+        expected_size, given_size = node.variable.size, SRInitializerList.dimensions(node.init_value)
+        if len(expected_size) != len(given_size):
+            raise InitializationLengthMismatchError(node.pos, expected_size, given_size)
+        for sz in expected_size:
+            if not IsConstExpr(sz):
+                raise InitializationNonConstSize(sz.pos, sz)
+            if sz.value <= 0:
+                raise InitializationNegativeSize(sz.pos, sz)
+        result = [sz.value for sz in expected_size]
+        for i in range(len(expected_size)):
+            if expected_size[i] == 0 and given_size[i] == 0:
+                raise InitializationUndefinedLengthError(node.pos, expected_size)
+            elif expected_size[i] != 0 and given_size[i] != 0:
+                if result[i] != given_size[i]:
+                    raise InitializationLengthMismatchError(node.pos, expected_size, given_size)
+            result[i] = max(result[i], given_size[i])
+        return result
+
+
+class SRVariable:
+    @staticmethod
+    def transform(node: basic_ast.Variable, st: SymbolTable):
+        symbol = SymbolFactory.create(node)
+        lookup_result = st.qnl(STLookupStrategy(symbol, STLookupScope.Global))
+        name_lookup_result = st.unql(STLookupStrategy(symbol, STLookupScope.Global))
+        if name_lookup_result.empty():
+            raise UndefinedSymbol(node.pos, node.name)
+        if lookup_result.empty():
+            node.type = name_lookup_result.first().type
+            if isinstance(node.type, ArrayT):
+                result = basic_ast.ArrayReference(node.pos, node.name, node.type)
+                SemanticRelaxTransform.transform(result, st)
+                return result
+        return node
+
+class SRArray:
+    @staticmethod
+    def transform(node: basic_ast.Array, st: SymbolTable = None):
+        result = node
+        if isinstance(result.type.size[0], int):
+            return result
+        for idx, expr in enumerate(result.size):
+            result.size[idx] = SemanticRelaxTransform.transform(expr, st)
+            if not isinstance(result.size[idx].type, IntegralT):
+                raise ArrayNotIntInit(result.pos, result.size[idx].type)
+        return result
+
+class SRFuncCallOrArrayIndex:
+    @staticmethod
+    def transform(node: basic_ast.FuncCallOrArrayIndex, st: SymbolTable):
+        result = node
+        lookup_result = st.unql(STLookupStrategy(SymbolFactory.create(node.name), STLookupScope.Global))
+        if lookup_result.empty():
+            raise UndefinedSymbol(node.pos, node.name)
+        if isinstance(lookup_result.first().type, ArrayT):
+            result = SemanticRelaxTransform.transform(basic_ast.ArrayIndex(node.pos, node.name, node.args, node.name.type), st)
+        elif isinstance(lookup_result.first().type, ProcedureT):
+            result = SemanticRelaxTransform.transform(basic_ast.FuncCall(node.pos, node.name, node.args, node.name.type), st)
+        return result
+
+
+class SRFuncCall:
+    @staticmethod
+    def transform(node: basic_ast.FuncCall, st: SymbolTable):
+        pass
+
+class SRArrayIndex:
+    @staticmethod
+    def transform(node: basic_ast.ArrayIndex, st: SymbolTable):
+        pass

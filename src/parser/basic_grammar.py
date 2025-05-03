@@ -96,7 +96,7 @@ NVarnameOrArrayArg |= NVarname, "(", NCommaList, ")", Array.create
 NFuncCallOrArrayIndex |= NVarname, "(", NArgumentsList, ")", FuncCallOrArrayIndex.create
 NFuncCallOrArrayIndex |= IDENTIFIER, "(", NArgumentsList, ")", FuncCall.create
 
-NFuncCall |= KW_PRINT, NNonEmptyArgumentsList, FuncCall.create_print
+NFuncCall |= KW_PRINT, NNonEmptyArgumentsList, PrintCall.create
 
 NVarname |= IDENTIFIER, NType, Varname.create
 NType |= "%", lambda: IntegerT()

@@ -112,32 +112,32 @@ class ArrayT(Type):
     name = "array"
 
     def __init__(self, valueT: Type, size: list[int]):
-        self.type = valueT
+        self.value_type = valueT
         self.size = size
         self.mangle_suff = "A" + valueT.mangle_suff * len(size)
 
     def __eq__(self, other):
         if isinstance(other, ArrayT):
-            self_any = self.type == Type()
-            other_any = other.type == Type()
+            self_any = self.value_type == Type()
+            other_any = other.value_type == Type()
             if self_any or other_any:
                 return self.size == other.size if len(self.size) != 1 and len(other.size) != 1 else True
             if (isinstance(self.size[0], int) and isinstance(other.size[0], int) and
                     self.is_function_param == other.is_function_param):
-                return self.type == other.type and self.size == other.size
+                return self.value_type == other.value_type and self.size == other.size
             else:
-                return self.type == other.type and len(self.size) == len(other.size)
+                return self.value_type == other.value_type and len(self.size) == len(other.size)
         return False
 
     def __str__(self):
-        return f"{self.type}[]"
+        return f"{self.value_type}[]"
 
     def default_value(self):
         sz = self.size[0] if not hasattr(self.size[0], "value") else self.size[0].value
         if len(self.size) == 1:
             return [0] * sz
         elif len(self.size) >= 1:
-            return [ArrayT(self.type, self.size[1:]).default_value()] * sz
+            return [ArrayT(self.value_type, self.size[1:]).default_value()] * sz
 
 
 class StringT(ArrayT):
