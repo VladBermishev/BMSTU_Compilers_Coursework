@@ -47,8 +47,7 @@ extern "C"{
 
     void StringFree(basic_std::string_type::pointer str){
         const auto&& __pred = [str](const basic_std::string_type& value){ return value.data() == str; };
-        std::size_t __removed = basic_std::pool.remove_if(__pred);
-        if(__removed > 1)
+        if(std::size_t __removed = basic_std::pool.remove_if(__pred); __removed > 1)
             throw std::runtime_error(std::format("StringFree bad free: removed {} identical items", __removed));
     }
 
