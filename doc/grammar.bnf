@@ -27,11 +27,11 @@ DO LOOP WHILE UNTIL
 <InitializerListValue> ::= <Expr> | <InitializerList>
 <ParametersList> ::= <VarnameOrArrayParam>","<ParametersList> | <VarnameOrArrayParam> | eps
 <NonEmptyParametersList> ::= <VarnameOrArrayParam> <NonEmptyParametersList> | <VarnameOrArrayParam>
-<VarnameOrArrayParam> = <Varname> | <Varname>"("<CommaList>")"
+<VarnameOrArrayParam> ::= <Varname> | <Varname>"("<CommaList>")"
 <CommaList> ::= ","<CommaList> | eps
 <ArgumentsList> ::= <Expr>","<NonEmptyArgumentsList> | <Expr> | eps
 <NonEmptyArgumentsList> ::= <Expr>","<NonEmptyArgumentsList> | <Expr>
-<VarnameOrArrayArg> = <Varname> | <Varname>"("<NonEmptyArgumentsList>")" | <Varname>"("<CommaList>")"
+<VarnameOrArrayArg> ::= <Varname> | <Varname>"("<NonEmptyArgumentsList>")" | <Varname>"("<CommaList>")"
 <FuncCallOrArrayIndex> ::= <Varname>"(" <ArgumentsList> ")" | IDENTIFIER"(" <ArgumentsList> ")"
 <FuncCall> ::= PRINT <ArgumentsList>
 <Varname> ::= IDENTIFIER <Type>
@@ -44,16 +44,16 @@ DO LOOP WHILE UNTIL
 <ExitStatement> ::= EXIT FOR | EXIT FOR <Varname> | EXIT DO | EXIT LOOP | EXIT SUB | EXIT FUNCTION
 <ElseStatement> ::= ELSE <Statements> | eps
 <Loop> ::= <ForLoop> | <WhileLoop>
-<ForLoop> ::= FOR <Varname> = <Expr> TO <Expr> <Statements> NEXT <Varname>
+<ForLoop> ::= FOR <Varname> "=" <Expr> TO <Expr> <Statements> NEXT <Varname>
 <WhileLoop> ::= DO <PreOrPostLoop>
 <PreOrPostLoop> ::= WHILE <PreLoop> | UNTIL <PreLoop> | <PostLoop>
 <PreLoop> ::= <Expr> <Statements> LOOP 
 <PostLoop> ::= <Statements> LOOP <PostLoopExpr>
 <PostLoopExpr> ::= WHILE <Expr> | UNTIL <Expr> | eps
 <Expr> ::= <ArithmExpr> | <ArithmExpr> <CmpOp> <ArithmExpr>
-<CmpOp> ::= > | < | >= | <= | = | <>
+<CmpOp> ::= ">" | "<" | ">=" | "<=" | "=" | "<>"
 <ArithmExpr> ::= <Term> | <AddOp> <Term> | <ArithmExpr> <AddOp> <Term>
-<AddOp> ::= + | -
-<Term> ::= <Power> | <Term> * <Power> | <Term> / <Power>
+<AddOp> ::= "+" | "-"
+<Term> ::= <Power> | <Term> "*" <Power> | <Term> "/" <Power>
 <Power> ::= <Varname> | <Const> | ( <Expr> ) | <FuncCallOrArrayIndex>
 <Const> ::= INT_CONST | REAL_CONST | STRING_CONST

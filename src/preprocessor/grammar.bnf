@@ -1,0 +1,6 @@
+<Program> ::= <Lines> | eps
+<Lines> ::= <Line> '\n' <Lines> | <Line>
+<Line> ::= <ControlLine> | <LineText>
+<ControlLine> ::= "#include" '\"'<FilePath>'\"' | "#include" '<'<FilePath>'>' | "#pragma" <LineText>
+<FilePath> ::= eps //any valid filepath
+<LineText> ::= [^\n]+

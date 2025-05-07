@@ -1,9 +1,11 @@
 import sys
-from src.parser import basic_grammar, parser_edsl as pe
-from src.optimizer.transforms import ConstantFoldingTransform
 import argparse
 from pathlib import Path
 from pprint import pprint
+from src.parser import basic_grammar
+from src.libs import parser_edsl as pe
+from src.optimizer.transforms import ConstantFoldingTransform
+
 
 p = pe.Parser(basic_grammar.NProgram)
 p.add_skipped_domain('\\s')

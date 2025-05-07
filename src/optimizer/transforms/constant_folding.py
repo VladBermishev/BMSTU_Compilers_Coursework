@@ -1,6 +1,5 @@
 from src.parser import basic_ast
 from src.parser import basic_types
-from src.parser.basic_ast import VariableDecl
 
 class Transform:
     @staticmethod

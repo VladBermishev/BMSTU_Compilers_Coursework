@@ -1,5 +1,5 @@
-from src.parser import parser_edsl as pe
 import re
+from src.libs import parser_edsl as pe
 from src.parser.basic_ast import *
 from src.parser.basic_types import *
 

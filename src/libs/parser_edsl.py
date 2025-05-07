@@ -438,7 +438,7 @@ def closure(gr, item_set):
 
 
 class Error(Exception, abc.ABC):
-    @abc.abstractproperty
+    @abc.abstractmethod
     def message(self):
         pass
 

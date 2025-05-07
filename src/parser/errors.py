@@ -1,9 +1,10 @@
-import src.parser.parser_edsl as pe
+import src.libs.parser_edsl as pe
 
 
 class SemanticError(pe.Error):
-    pass
-
+    @property
+    def message(self):
+        raise NotImplementedError
 
 class BinBadType(SemanticError):
     def __init__(self, pos, left, op, right):

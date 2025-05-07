@@ -1,7 +1,7 @@
 import pathlib
 from enum import Enum
 from src.parser.errors import RedefinitionError
-from src.parser.parser_edsl import Position
+from src.libs.parser_edsl import Position
 
 
 class STBlockType(Enum):
