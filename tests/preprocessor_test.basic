@@ -1,0 +1,4 @@
+#pragma once
+#include        <pp_test.basic>
+
+    dim a% = 10

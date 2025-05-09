@@ -1,11 +1,7 @@
 import abc
 import itertools
-import string
-import typing
 from dataclasses import dataclass
 from llvmlite.ir import FunctionType
-
-from src.parser.analyzers.is_const_expr import IsConstExpr
 from src.parser.errors import *
 from src.parser.basic_types import *
 from src.parser.symbol_table import SymbolTable, Symbol, SymbolTableBlockType, SymbolTableLLVMEntry
@@ -587,7 +583,8 @@ class VariableDecl:
         if len(expected_size) != len(given_size):
             raise InitializationLengthMismatchError(self.pos, expected_size, given_size)
         for sz in expected_size:
-            if not IsConstExpr(sz):
+            """IsConstExpr(sz)"""
+            if False:
                 raise InitializationNonConstSize(sz.pos, sz)
             elif sz.value <= 0:
                 raise InitializationNegativeSize(sz.pos, sz)
@@ -1453,15 +1450,12 @@ class BinOpExpr(Expr):
 @dataclass
 class Program:
     decls: list[SubroutineDecl | FunctionDecl | SubroutineDef | FunctionDef | VariableDecl]
-    symbol_table: SymbolTable
 
     @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
         global_decls = attrs[0]
-        declarations = Program.standart_library() + global_decls
-        program = Program(declarations, SymbolTable(block_type=SymbolTableBlockType.GlobalBlock))
-        program = program.relax()
+        program = Program(global_decls)
         return program
 
     def relax(self):
@@ -1487,62 +1481,5 @@ class Program:
         return program_module
 
     @staticmethod
-    def standart_library() -> list:
-        standart_decls = []
-        types = [IntegerT(), LongT(), FloatT(), DoubleT(), StringT()]
-
-        for tp in types:
-            symbol = Program.print_symbol(tp)
-            print_arg = [Variable(pe.Position(), Varname(pe.Position(), "val", tp), tp)]
-            print_proto = SubroutineProto(pe.Position(), symbol.name, print_arg, symbol.type)
-            print_sub = SubroutineDecl(pe.Position(), print_proto, True)
-            standart_decls.append(print_sub)
-
-        default_pos = pe.Position(-1, -1, -1)
-        len_arg = [Variable(default_pos, Varname(default_pos, "arr", Type()), ArrayT(Type(), [], True))]
-        len_proto = FunctionProto(default_pos, Varname(default_pos, "Len", IntegerT()), len_arg,
-                                  ProcedureT(IntegerT(), [arg.type for arg in len_arg]))
-        len_func = FunctionDecl(default_pos, len_proto, True)
-        standart_decls.append(len_func)
-
-        default_pos = pe.Position(-1, -1, -1)
-        str_concat_arg = [Variable(default_pos, Varname(default_pos, "lhs", StringT()), StringT()),
-                          Variable(default_pos, Varname(default_pos, "rhs", StringT()), StringT())]
-        str_concat_proto = FunctionProto(default_pos, Varname(default_pos, "StringConcat", StringT()), str_concat_arg,
-                                  ProcedureT(StringT(), [arg.type for arg in str_concat_arg]))
-        str_concat_func = FunctionDecl(default_pos, str_concat_proto, True)
-        standart_decls.append(str_concat_func)
-
-        str_copy_arg = [Variable(default_pos, Varname(default_pos, "lhs", StringT()), StringT())]
-        str_copy_proto = FunctionProto(default_pos, Varname(default_pos, "StringCopy", StringT()), str_copy_arg,
-                                         ProcedureT(StringT(), [arg.type for arg in str_copy_arg]))
-        str_copy_func = FunctionDecl(default_pos, str_copy_proto, True)
-        standart_decls.append(str_copy_func)
-
-        return standart_decls
-
-    @staticmethod
-    def print_symbol(tp: Type):
-        if isinstance(tp, NumericT) or isinstance(tp, StringT):
-            print_varname = Varname(pe.Position(), f"Print{tp.mangle_suff}", VoidT())
-            return Symbol(print_varname, ProcedureT(VoidT(), [tp]), True)
-        else:
-            raise RuntimeError("Bad print type")
-
-    @staticmethod
-    def len_symbol():
-        len_arg_type = ArrayT(Type(), [], True)
-        len_varname = Varname(pe.Position(), "Len", IntegerT())
-        return Symbol(len_varname, ProcedureT(VoidT(), [len_arg_type]), True)
-
-    @staticmethod
     def global_constructor_symbol():
         return Symbol(Varname(None, "variable_decl_constructor", VoidT()), ProcedureT(VoidT(), []))
-
-    @staticmethod
-    def string_concat_symbol():
-        return Symbol(Varname(pe.Position(), "StringConcat", StringT()), ProcedureT(StringT(), [StringT(), StringT()]), True)
-
-    @staticmethod
-    def string_copy_symbol():
-        return Symbol(Varname(pe.Position(), "StringCopy", StringT()), ProcedureT(StringT(), [StringT()]), True)

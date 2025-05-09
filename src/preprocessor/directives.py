@@ -1,3 +1,4 @@
+import enum
 from dataclasses import dataclass
 from src.libs import parser_edsl as pe
 from pathlib import Path
@@ -5,15 +6,17 @@ from pathlib import Path
 @dataclass
 class FileInclude:
     pos: pe.Position
-    filepath: str
+    filepath: str | Path
 
     @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
-        include_kw, lbr, filepath, rbr = attrs
-        cinclude_kw, clbr, cfilepath, crbr = coords
+        include_kw, filepath = attrs
+        cinclude_kw, cspaces, clbr, cfilepath, crbr = coords
         return FileInclude(cinclude_kw, filepath)
 
+class PragmaCommands(enum.Enum):
+    ONCE = "once"
 
 @dataclass
 class PragmaCommand:
@@ -25,7 +28,7 @@ class PragmaCommand:
     def create(attrs, coords, res_coord):
         pragma_kw, command = attrs
         cpragma_kw, ctext = coords
-        return PragmaCommand(cpragma_kw, command)
+        return PragmaCommand(cpragma_kw, command.strip())
 
 @dataclass
 class Program:
@@ -34,4 +37,4 @@ class Program:
     @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
-        return Program(attrs)
+        return Program(attrs[0])

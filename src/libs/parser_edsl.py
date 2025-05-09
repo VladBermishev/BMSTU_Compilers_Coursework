@@ -762,11 +762,8 @@ class Lexer:
     def next_token(self):
         while self.pos.offset < len(self.text):
             offset = self.pos.offset
-            matches = [(d, d.priority, *d.match(self.text, offset))
-                       for d in self.domains]
-            domain, priority, length, attr = \
-                    max(matches, key=lambda t: (t[2], t[1]))
-
+            matches = [(d, d.priority, *d.match(self.text, offset)) for d in self.domains]
+            domain, priority, length, attr = max(matches, key=lambda t: (t[2], t[1]))
             assert length > 0
 
             if attr == ErrorTerminal:
@@ -778,5 +775,7 @@ class Lexer:
             if attr != self.skip_token:
                 token = Token(domain, frag, attr)
                 return token
+            else:
+                breakpoint()
 
         return Token(EOF_SYMBOL, Fragment(self.pos, self.pos), None)
