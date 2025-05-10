@@ -89,6 +89,10 @@ class STLookupResult:
     def __bool__(self):
         return bool(self.results)
 
+    def __iter__(self):
+        for result in self.results:
+            yield result
+
 
 class SymbolTable:
 
@@ -144,9 +148,7 @@ class SymbolTable:
         return node.path/str(uuid)
 
     @staticmethod
-    def _root(node=None):
-        if node is None:
-            return None
+    def _root(node):
         result = node
         while result.parent is not None:
             result = result.parent

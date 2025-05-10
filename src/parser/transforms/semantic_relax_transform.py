@@ -9,10 +9,10 @@ from src.parser.errors import *
 
 class SemanticRelaxTransform:
     @staticmethod
-    def transform(node, st: SymbolTable = None):
+    def transform(node, st: SymbolTable = None, standart_library = None):
         match type(node):
             case t if t is basic_ast.Program:
-                return SRProgram.transform(node)
+                return SRProgram.transform(node, standart_library)
             case t if t is basic_ast.FunctionDecl:
                 return SRFunctionDecl.transform(node, st)
             case t if t is basic_ast.FunctionDef:
@@ -37,6 +37,8 @@ class SemanticRelaxTransform:
                 return SRVariable.transform(node, st)
             case t if t is basic_ast.FuncCallOrArrayIndex:
                 return SRFuncCallOrArrayIndex.transform(node, st)
+            case t if t is basic_ast.PrintCall:
+                return SRPrintCall.transform(node, st)
             case t if t is basic_ast.FuncCall:
                 return SRFuncCall.transform(node, st)
             case t if t is basic_ast.ArrayIndex:
@@ -46,9 +48,10 @@ class SemanticRelaxTransform:
 
 class SRProgram:
     @staticmethod
-    def transform(node: basic_ast.Program):
+    def transform(node: basic_ast.Program, std_library: basic_ast.Program):
         table = SymbolTable()
         result = node
+        result.decls = std_library.decls + result.decls
         for idx, declaration in enumerate(result.decls):
             result.decls[idx] = SemanticRelaxTransform.transform(declaration, st=table)
         return result, table
@@ -247,13 +250,44 @@ class SRFuncCallOrArrayIndex:
             result = SemanticRelaxTransform.transform(basic_ast.FuncCall(node.pos, node.name, node.args, node.name.type), st)
         return result
 
+class SRPrintCall:
+    @staticmethod
+    def transform(node: basic_ast.PrintCall, st: SymbolTable):
+        result = node
+        for idx, arg in enumerate(node.args):
+            result.args[idx] = SemanticRelaxTransform.transform(arg, st)
+            if not isinstance(result.args[idx].type, (NumericT, StringT)):
+                raise UndefinedFunction(result.pos, result.name, ProcedureT(VoidT(), [arg.type]))
+        return result
 
 class SRFuncCall:
     @staticmethod
     def transform(node: basic_ast.FuncCall, st: SymbolTable):
-        pass
+        result = node
+        for idx, arg in enumerate(node.args):
+            result.args[idx] = SemanticRelaxTransform.transform(arg, st)
+        func_call_symbol = SymbolFactory.create(node)
+        if not st.qnl(STLookupStrategy(func_call_symbol, STLookupScope.Global)).empty():
+            return result
+        if not (lookup_result := st.unql(STLookupStrategy(func_call_symbol, STLookupScope.Global))).empty():
+            for func in lookup_result:
+                if common_type(func.type, func_call_symbol.type) == func.type:
+                    return ImplicitCastAstGenerator.generate(result, func.type)
+            raise UndefinedFunction(result.pos, result.name, func_call_symbol.type)
+        raise UndefinedSymbol(node.pos, node.name)
 
 class SRArrayIndex:
     @staticmethod
     def transform(node: basic_ast.ArrayIndex, st: SymbolTable):
-        pass
+        result = node
+        for idx, arg in enumerate(node.args):
+            result.args[idx] = SemanticRelaxTransform.transform(arg, st)
+            if not isinstance(result.args[idx].type, IntegralT):
+                raise ArrayNotIntIndexing(result.pos, result.args[idx].type)
+        symbol = SymbolFactory.create(node)
+        if not (lookup_result := st.unql(STLookupStrategy(symbol, STLookupScope.Global))).empty():
+            if len(result.args) != len(lookup_result.first().type.size):
+                if len(result.args) > len(lookup_result.first().type.size):
+                    raise ArrayIndexingDimensionMismatchError(result.pos, len(lookup_result.first().type.size), len(result.args))
+            result.type = ArrayT(result.name.type, lookup_result.first().type.size[len(result.args):len(lookup_result.first().type.size)])
+        raise UndefinedSymbol(node.pos, node.name)

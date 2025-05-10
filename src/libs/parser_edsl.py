@@ -775,7 +775,5 @@ class Lexer:
             if attr != self.skip_token:
                 token = Token(domain, frag, attr)
                 return token
-            else:
-                breakpoint()
 
         return Token(EOF_SYMBOL, Fragment(self.pos, self.pos), None)

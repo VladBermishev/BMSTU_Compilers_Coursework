@@ -716,14 +716,6 @@ class FuncCall:
             func_name = Varname(cfunc.start, func_name, VoidT())
         return FuncCall(cfunc.start, func_name, args, func_name.type)
 
-    @staticmethod
-    @pe.ExAction
-    def create_print(attrs, coords, res_coord):
-        args = attrs[0]
-        cprint, cargs = coords
-        func_name = Varname(cprint.start, "Print", VoidT())
-        return FuncCall(cprint.start, func_name, args, func_name.type)
-
     def relax(self, symbol_table: SymbolTable, lvalue=True):
         for idx, arg in enumerate(self.args):
             self.args[idx] = arg.relax(symbol_table, False)
@@ -884,6 +876,7 @@ class ArrayIndex:
                 return gep_idx
             else:
                 return symbol_table.llvm.builder.load(gep_idx, "gep_idx_load")
+        return None
 
     @staticmethod
     def get_func_ptr(builder: ir.IRBuilder, arr_alloca: ir.AllocaInstr, indices: list):

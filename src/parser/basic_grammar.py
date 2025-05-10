@@ -90,8 +90,8 @@ NNonEmptyArgumentsList |= NExpr, ",", NNonEmptyArgumentsList, lambda vd, vds: [v
 NNonEmptyArgumentsList |= NExpr, lambda vd: [vd]
 
 NVarnameOrArrayArg |= NVarname, Variable.create
-NVarnameOrArrayArg |= NVarname, "(", NNonEmptyArgumentsList, ")", Array.create
-NVarnameOrArrayArg |= NVarname, "(", NCommaList, ")", Array.create
+NVarnameOrArrayArg |= NVarname, "(", NNonEmptyArgumentsList, ")", Array.create_variable
+NVarnameOrArrayArg |= NVarname, "(", NCommaList, ")", Array.create_variable
 
 NFuncCallOrArrayIndex |= NVarname, "(", NArgumentsList, ")", FuncCallOrArrayIndex.create
 NFuncCallOrArrayIndex |= IDENTIFIER, "(", NArgumentsList, ")", FuncCall.create
