@@ -61,8 +61,8 @@ class STLookupStrategy:
 
 class STLookupResult:
 
-    def __init__(self, symbols: list[Symbol] = None):
-        self.results = [] if symbols is None else symbols
+    def __init__(self, values: list = None):
+        self.results = [] if values is None else values
 
     def first(self) -> Symbol:
         if len(self.results) == 0:
@@ -77,8 +77,8 @@ class STLookupResult:
     def where(self, predicate):
         return STLookupResult(list(filter(predicate, self.results)))
 
-    def append(self, symbol: Symbol):
-        self.results.append(symbol)
+    def append(self, value):
+        self.results.append(value)
 
     def length(self):
         return len(self.results)
@@ -137,9 +137,22 @@ class SymbolTable:
             for local_symbol in current_node.symbols:
                 if strategy.match(local_symbol):
                     result.append(local_symbol)
+            if strategy.scope == STLookupScope.Local:
+                break
             current_node = current_node.parent
         return result
 
+    """
+        Block Lookup: search for exact block types in upstream path
+    """
+    def bl(self, block_type: STBlockType = STBlockType.GlobalBlock) -> STLookupResult:
+        result = STLookupResult()
+        current_node = self
+        while current_node is not None:
+            if current_node.block_type == block_type:
+                result.append(current_node)
+            current_node = current_node.parent
+        return result
 
     @staticmethod
     def _resolve_path(node=None, uuid:int = None):
@@ -158,20 +171,37 @@ class SymbolTable:
         root = SymbolTable._root(self)
         current_node = root
         for table_uuid in item.parts[:-1]:
-            if 0 <= int(table_uuid) < len(current_node.children):
+            if not (0 <= int(table_uuid) < len(current_node.children)):
                 raise KeyError(item)
             current_node = current_node.children[table_uuid]
-        if 0 <= int(item.parts[-1]) < len(current_node.symbols):
-            raise KeyError(item)
-        return current_node.symbols[int(item.parts[-1])]
+        if len(current_node.children) > 0:
+            if not (0 <= int(item.parts[-1]) < len(current_node.children)):
+                raise KeyError(item)
+            return current_node.children[int(item.parts[-1])]
+        else:
+            if not (0 <= int(item.parts[-1]) < len(current_node.symbols)):
+                raise KeyError(item)
+            return current_node.symbols[int(item.parts[-1])]
 
     def __setitem__(self, key: pathlib.Path, value):
         root = SymbolTable._root(self)
         current_node = root
         for table_uuid in key.parts[:-1]:
-            if 0 <= int(table_uuid) < len(current_node.children):
+            if not (0 <= int(table_uuid) < len(current_node.children)):
                 raise KeyError(key)
             current_node = current_node.children[table_uuid]
-        if 0 <= int(key.parts[-1]) < len(current_node.symbols):
-            raise KeyError(key)
-        current_node.symbols[int(key.parts[-1])] = value
+        if len(current_node.children) > 0:
+            if not (0 <= int(key.parts[-1]) < len(current_node.children)):
+                raise KeyError(key)
+            current_node.children[int(key.parts[-1])] = value
+        else:
+            if not (0 <= int(key.parts[-1]) < len(current_node.symbols)):
+                raise KeyError(key)
+            current_node.symbols[int(key.parts[-1])] = value
+
+    def __iter__(self):
+        for symbol in self.symbols:
+            yield symbol
+        for block in self.children:
+            for symbol in block:
+                yield symbol

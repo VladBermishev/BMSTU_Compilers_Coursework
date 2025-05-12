@@ -43,6 +43,16 @@ class SemanticRelaxTransform:
                 return SRFuncCall.transform(node, st)
             case t if t is basic_ast.ArrayIndex:
                 return SRArrayIndex.transform(node, st)
+            case t if t is basic_ast.ExitFor:
+                return SRExitFor.transform(node, st)
+            case t if t is basic_ast.ExitWhile:
+                return SRExit.transform(node, st)
+            case t if t is basic_ast.ExitFunction:
+                return SRExit.transform(node, st)
+            case t if t is basic_ast.ExitSubroutine:
+                return SRExit.transform(node, st)
+            case t if t is basic_ast.AssignStatement:
+                return SRAssignStatement.transform(node, st)
         return None
 
 
@@ -285,9 +295,62 @@ class SRArrayIndex:
             if not isinstance(result.args[idx].type, IntegralT):
                 raise ArrayNotIntIndexing(result.pos, result.args[idx].type)
         symbol = SymbolFactory.create(node)
-        if not (lookup_result := st.unql(STLookupStrategy(symbol, STLookupScope.Global))).empty():
-            if len(result.args) != len(lookup_result.first().type.size):
-                if len(result.args) > len(lookup_result.first().type.size):
-                    raise ArrayIndexingDimensionMismatchError(result.pos, len(lookup_result.first().type.size), len(result.args))
-            result.type = ArrayT(result.name.type, lookup_result.first().type.size[len(result.args):len(lookup_result.first().type.size)])
-        raise UndefinedSymbol(node.pos, node.name)
+        if (lookup_result := st.unql(STLookupStrategy(symbol, STLookupScope.Global))).empty():
+            raise UndefinedSymbol(node.pos, node.name)
+        if len(result.args) != len(lookup_result.first().type.size):
+            if len(result.args) > len(lookup_result.first().type.size):
+                raise ArrayIndexingDimensionMismatchError(result.pos, len(lookup_result.first().type.size),len(result.args))
+        result.type = ArrayT(result.name.type, lookup_result.first().type.size[len(result.args):len(lookup_result.first().type.size)])
+        return result
+
+class SRExitFor:
+    @staticmethod
+    def transform(node: basic_ast.ExitFor, st: SymbolTable):
+        if st.bl(STBlockType.ForLoopBlock).empty():
+            raise InappropriateExit(node.pos, node)
+        if node.name is not None and st.qnl(SymbolFactory.create(node)).empty():
+            raise UndefinedSymbol(node.pos, node.name)
+        return node
+
+class SRExit:
+    @staticmethod
+    def transform(node, st: SymbolTable):
+        block_type = None
+        match type(node):
+            case t if t is basic_ast.ExitWhile:
+                block_type = STBlockType.WhileLoopBlock
+            case t if t is basic_ast.ExitFunction:
+                block_type = STBlockType.FunctionBlock
+            case t if t is basic_ast.ExitSubroutine:
+                block_type = STBlockType.SubroutineBlock
+        if block_type is None:
+            raise TypeError(f"Unexpected type {type(node)}")
+        if st.bl(block_type).empty():
+            raise InappropriateExit(node.pos, node)
+        return node
+
+class SRAssignStatement:
+    @staticmethod
+    def transform(node: basic_ast.AssignStatement, st: SymbolTable):
+        result = node
+        if isinstance(node.variable, basic_ast.Variable):
+            try:
+                result.variable = SemanticRelaxTransform.transform(result.variable, st)
+            except UndefinedSymbol as e:
+                #Then it's a variable declaration
+                var_decl = basic_ast.VariableDecl(result.pos, result.variable, result.expr)
+                return SemanticRelaxTransform.transform(var_decl, st)
+        else:
+            #Handle ArrayIndex vs FuncCall
+            result.variable = SemanticRelaxTransform.transform(result.variable, st)
+            pass
+        result.expr = SemanticRelaxTransform.transform(result.expr, st)
+        if common_type(result.expr.type, result.variable.type) != result.variable.type:
+            raise ConversionError(result.pos, result.expr.type, result.variable.type)
+        result.expr = ImplicitCastAstGenerator.generate(result.expr, result.variable.type)
+        return result
+
+class SRForLoop:
+    @staticmethod
+    def transform(node: basic_ast.ForLoop, st: SymbolTable):
+        pass
