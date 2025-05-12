@@ -13,9 +13,6 @@ class Expr(abc.ABC):
     def __init__(self):
         self.type = Type()
 
-    def relax(self, symbol_table: SymbolTable, lvalue=True):
-        return self
-
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         return self
 
@@ -124,17 +121,6 @@ class Variable:
         cvarname = coords[0]
         return Variable(cvarname.start, varname, varname.type)
 
-    def relax(self, symbol_table: SymbolTable, lvalue=True):
-        lookup_result = symbol_table.lookup(self.symbol(), by_origin=False)
-        name_lookup_result = symbol_table.lookup(self.symbol(), by_type=False, by_origin=False)
-        if not name_lookup_result and not lvalue:
-            raise UndefinedSymbol(self.pos, self.name)
-        if not lookup_result and not lvalue:
-            self.type = name_lookup_result.type
-            if isinstance(self.type, ArrayT):
-                return Array(self.pos, self.name, self.type, self.type.size).relax(symbol_table)
-        return self
-
     def symbol(self):
         return Symbol(self.name, self.type, False)
 
@@ -168,15 +154,6 @@ class Array(Variable):
         expression_sizes = [ConstExpr(cop.start, 0, IntegerT())] * dimensions
         return Array(cvarname.start, varname, ArrayT(varname.type, size), expression_sizes)
 
-    def relax(self, symbol_table: SymbolTable, lvalue=True):
-        if isinstance(self.size[0], int):
-            return self
-        for idx, expr in enumerate(self.size):
-            self.size[idx] = expr.relax(symbol_table, lvalue=False)
-            if not isinstance(self.size[idx].type, IntegralT):
-                raise ArrayNotIntInit(self.pos, self.size[idx].type)
-        return self
-
     """ I assume that would be called only from expressions codegen """
 
     def codegen(self, symbol_table, lvalue: bool = False):
@@ -207,19 +184,6 @@ class FunctionProto:
         cfunc_kw, cvar, cop, cparams, ccp = coords
         return FunctionProto(cvar.start, name, args, ProcedureT(name.type, [arg.type for arg in args]))
 
-    @staticmethod
-    def construct(varname: Varname, args: list[Variable]):
-        return FunctionProto(pe.Position(-1,-1,-1), varname, args, ProcedureT(varname.type, [arg.type for arg in args]))
-
-    def relax(self, symbol_table: SymbolTable):
-        names = [self.name]
-        for idx, var in enumerate(self.args):
-            if var.name in names:
-                raise RedefinitionError(var.pos, var.name, names[names.index(var.name)].pos)
-            if isinstance(var.type, ArrayT):
-                var.type.is_function_param = True
-        return self
-
     def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
         arguments = []
         symbols = []
@@ -248,16 +212,6 @@ class FunctionDecl:
         cdecl_kw, cproto = coords
         return FunctionDecl(cdecl_kw.start, proto, True)
 
-    def relax(self, symbol_table: SymbolTable):
-        symbol = self.symbol()
-        lookup_result = symbol_table.lookup(symbol, local=True, by_origin=False)
-        if lookup_result and lookup_result.external:
-            raise RedefinitionError(self.pos, self.proto.name, lookup_result.name.pos)
-        if not lookup_result:
-            symbol_table.add(symbol)
-        self.proto = self.proto.relax(symbol_table)
-        return self
-
     def symbol(self):
         return Symbol(self.proto.name, self.proto.type, self.external)
 
@@ -284,26 +238,6 @@ class FunctionDef:
         proto, stmts = attrs
         cfunproto, cbody, cend_kw, cfun_kw = coords
         return FunctionDef(cfunproto.start, proto, stmts)
-
-    def relax(self, symbol_table: SymbolTable):
-        symbol = self.symbol()
-        lookup_result = symbol_table.lookup(symbol, local=True, by_origin=False)
-        if lookup_result:
-            if not lookup_result.external:
-                raise RedefinitionError(self.pos, self.proto.name, lookup_result.name.pos)
-            else:
-                lookup_result.external = False
-        else:
-            symbol_table.add(symbol)
-        self.proto.relax(symbol_table)
-        body_symbol_table = symbol_table.new_local(SymbolTableBlockType.FunctionBlock)
-        func_ret_variable = Variable(self.proto.name.pos, self.proto.name, self.proto.type.retT)
-        body_symbol_table.add(func_ret_variable.symbol())
-        for var in self.proto.args:
-            body_symbol_table.add(var.symbol())
-        for idx, stmt in enumerate(self.body):
-            self.body[idx] = stmt.relax(body_symbol_table)
-        return self
 
     def symbol(self):
         return Symbol(self.proto.name, self.proto.type, False)
@@ -361,15 +295,6 @@ class SubroutineProto:
         varname = Varname(cvar.start, name, VoidT())
         return SubroutineProto(csub_kw.start, varname, args, ProcedureT(VoidT(), [arg.type for arg in args]))
 
-    def relax(self, symbol_table: SymbolTable):
-        names = [self.name]
-        for idx, var in enumerate(self.args):
-            if var.name in names:
-                raise RedefinitionError(var.pos, var.name, names[names.index(var.name)].pos)
-            if isinstance(var.type, ArrayT):
-                var.type.is_function_param = True
-        return self
-
     def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
         arguments = []
         symbols = []
@@ -396,16 +321,6 @@ class SubroutineDecl:
         cdecl_kw, cproto = coords
         return SubroutineDecl(cdecl_kw.start, proto, True)
 
-    def relax(self, symbol_table: SymbolTable):
-        symbol = self.symbol()
-        lookup_result = symbol_table.lookup(symbol, local=True, by_origin=False)
-        if lookup_result and lookup_result.external:
-            raise RedefinitionError(self.pos, self.proto.name, lookup_result.name.pos)
-        if not lookup_result:
-            symbol_table.add(symbol)
-        self.proto = self.proto.relax(symbol_table)
-        return self
-
     def symbol(self):
         return Symbol(self.proto.name, self.proto.type, self.external)
 
@@ -430,24 +345,6 @@ class SubroutineDef:
         proto, stmts = attrs
         csubproto, cbody, cend_kw, csub_kw = coords
         return SubroutineDef(csubproto.start, proto, stmts)
-
-    def relax(self, symbol_table: SymbolTable):
-        symbol = Symbol(self.proto.name, self.proto.type, False)
-        lookup_result = symbol_table.lookup(symbol, local=True, by_origin=False)
-        if lookup_result:
-            if not lookup_result.external:
-                raise RedefinitionError(self.pos, self.proto.name, lookup_result.name.pos)
-            else:
-                lookup_result.external = False
-        else:
-            symbol_table.add(symbol)
-        self.proto.relax(symbol_table)
-        body_symbol_table = symbol_table.new_local(SymbolTableBlockType.FunctionBlock)
-        for var in self.proto.args:
-            body_symbol_table.add(var.symbol())
-        for idx, stmt in enumerate(self.body):
-            self.body[idx] = stmt.relax(body_symbol_table)
-        return self
 
     def symbol(self):
         return Symbol(self.proto.name, self.proto.type, False)
@@ -494,39 +391,6 @@ class InitializerList:
         cop, cvalues, ccp = coords
         return InitializerList(cop.start, vals, VoidT())
 
-    def relax(self, symbol_table: SymbolTable, lvalue: bool = False):
-        common_type = None if len(self.values) == 0 else type(self.values[0])
-        if not common_type:
-            return self
-        for val in self.values:
-            if common_type != type(val):
-                raise InappropriateInitializerList(self.pos, common_type, type(val))
-        self.size()
-        for idx, val in enumerate(self.values):
-            self.values[idx] = val.relax(symbol_table, lvalue=False)
-        common_type = self.values[0].type
-        for val in self.values:
-            if common_type != val.type:
-                raise InappropriateInitializerList(self.pos, common_type, val.type)
-        self.type = common_type
-        return self
-
-    def size(self):
-        if len(self.values) == 0:
-            return 0
-        if isinstance(self.values[0], InitializerList):
-            common_sz = self.values[0].size()
-            for val in self.values:
-                val_size = val.size()
-                if common_sz != val_size:
-                    raise InitializerListDimensionMismatch(self.pos, common_sz, val_size)
-            return [len(self.values)] + common_sz
-        else:
-            return [len(self.values)]
-
-    def __getitem__(self, item):
-        return self.values[item]
-
 
 @dataclass
 class VariableDecl:
@@ -540,63 +404,6 @@ class VariableDecl:
         var, var_ini = attrs[0], attrs[1] if len(attrs) > 1 else None
         cdim_kw, cvar, cvar_init = coords
         return VariableDecl(cdim_kw.start, var, var_ini)
-
-    def relax(self, symbol_table: SymbolTable):
-        if (lookup_result := symbol_table.lookup(self.variable.symbol(), local=True, by_type=False, by_origin=False)) is not None:
-            raise RedefinitionError(self.pos, self.variable.name, lookup_result.name.pos)
-        if self.init_value:
-            self.init_value = self.init_value.relax(symbol_table)
-            if isinstance(self.variable, Array):
-                if not self.init_value.type.castable_to(self.variable.type.type):
-                    raise ConversionError(self.pos, self.init_value.type, self.variable.type.type)
-                if isinstance(self.init_value, Expr):
-                    raise InappropriateInitializerList(self.pos, f"InitializerList{{{self.variable.type}}}", self.init_value)
-                else:
-                    self.variable = self.variable.relax(symbol_table)
-                    self.variable.size = self.__check_sizes(self.variable.size, self.init_value.size())
-                    self.variable.type.size = self.variable.size
-                    symbol_table.add(self.variable.symbol())
-            else:
-                if not self.init_value.type.castable_to(self.variable.type):
-                    raise ConversionError(self.pos, self.init_value.type, self.variable.type)
-                if isinstance(self.init_value, InitializerList):
-                    sz = self.init_value.size()
-                    self.variable = Array(self.variable.pos, self.variable.name, ArrayT(self.variable.type, sz), sz)
-                    symbol_table.add(self.variable.symbol())
-                else:
-                    if isinstance(self.init_value, ConstExpr) and self.variable.type != self.init_value.type:
-                        self.init_value = ConstExpr(self.init_value.pos, self.init_value.value, self.variable.type)
-                    symbol_table.add(self.variable.symbol())
-        else:
-            if isinstance(self.variable, Array):
-                if isinstance(self.variable.size[0], int):
-                    raise InitializationUndefinedLengthError(self.pos, self.variable.size)
-                for idx, sz in enumerate(self.variable.size):
-                    if not (isinstance(sz, ConstExpr) and isinstance(sz.type, IntegralT)):
-                        raise InitializationUndefinedLengthError(self.pos, self.variable.size)
-                    self.variable.size[idx] = self.variable.size[idx].value
-            symbol_table.add(self.variable.symbol())
-            self.variable = self.variable.relax(symbol_table)
-        return self
-
-    def __check_sizes(self, expected_size, given_size):
-        if len(expected_size) != len(given_size):
-            raise InitializationLengthMismatchError(self.pos, expected_size, given_size)
-        for sz in expected_size:
-            """IsConstExpr(sz)"""
-            if False:
-                raise InitializationNonConstSize(sz.pos, sz)
-            elif sz.value <= 0:
-                raise InitializationNegativeSize(sz.pos, sz)
-        result = [sz.value for sz in expected_size]
-        for i in range(len(expected_size)):
-            if expected_size[i] == 0 and given_size[i] == 0:
-                raise InitializationUndefinedLengthError(self.pos, expected_size)
-            elif expected_size[i] != 0 and given_size[i] != 0:
-                if result[i] != given_size[i]:
-                    raise InitializationLengthMismatchError(self.pos, expected_size, given_size)
-            result[i] = max(result[i], given_size[i])
-        return result
 
     def codegen(self, symbol_table: SymbolTable):
         if symbol_table.block_type != SymbolTableBlockType.GlobalBlock:
@@ -674,19 +481,6 @@ class FuncCallOrArrayIndex:
         cvarname, cop, cargs, ccp = coords
         return FuncCallOrArrayIndex(cvarname.start, varname, args)
 
-    def relax(self, symbol_table: SymbolTable, lvalue=True):
-        lookup_result = symbol_table.lookup(Symbol(self.name, self.name.type), by_type=False, by_origin=False)
-        if not lookup_result:
-            raise UndefinedSymbol(self.pos, self.name)
-        else:
-            if isinstance(lookup_result.type, ArrayT):
-                result = ArrayIndex(self.pos, self.name, self.args, self.name.type)
-                return result.relax(symbol_table)
-            elif isinstance(lookup_result.type, ProcedureT):
-                result = FuncCall(self.pos, self.name, self.args, self.name.type)
-                return result.relax(symbol_table)
-        return self
-
 
 @dataclass
 class PrintCall:
@@ -715,27 +509,6 @@ class FuncCall:
         if isinstance(func_name, str):
             func_name = Varname(cfunc.start, func_name, VoidT())
         return FuncCall(cfunc.start, func_name, args, func_name.type)
-
-    def relax(self, symbol_table: SymbolTable, lvalue=True):
-        for idx, arg in enumerate(self.args):
-            self.args[idx] = arg.relax(symbol_table, False)
-        if self.name.name == "Print":
-            for arg in self.args:
-                if not isinstance(arg.type, (NumericT, ConstantStringT, PointerT)):
-                    raise UndefinedFunction(self.pos, self.name, ProcedureT(VoidT(), [arg.type]))
-        else:
-            lookup_result = symbol_table.lookup(self.symbol(), by_origin=False, accumulate=True)
-            name_lookup_result = symbol_table.lookup(self.symbol(), by_type=False, by_origin=False, accumulate=True)
-            if name_lookup_result is None:
-                raise UndefinedSymbol(self.pos, self.name)
-            func_subst = None
-            for symb in name_lookup_result:
-                if self.symbol().type.castable_to(symb.type):
-                    func_subst = symb
-                    break
-            if not lookup_result and not func_subst:
-                raise UndefinedFunction(self.pos, self.name, self.symbol().type)
-        return self
 
     def symbol(self):
         return Symbol(self.name, ProcedureT(self.name.type, [arg.type for arg in self.args]))
@@ -837,23 +610,6 @@ class ArrayIndex:
     def create(attrs, coords, res_coord):
         pass
 
-    def relax(self, symbol_table: SymbolTable):
-        for idx, arg in enumerate(self.args):
-            self.args[idx] = arg.relax(symbol_table)
-            if not isinstance(self.args[idx].type, IntegralT):
-                raise ArrayNotIntIndexing(self.pos, self.args[idx].type)
-        lookup_result = symbol_table.lookup(Symbol(self.name, self.name.type), by_type=False, by_origin=False)
-        if not lookup_result:
-            raise UndefinedSymbol(self.pos, self.name)
-        if len(self.args) != len(lookup_result.type.size):
-            if len(self.args) > len(lookup_result.type.size):
-                raise ArrayIndexingDimensionMismatchError(self.pos, len(lookup_result.type.size), len(self.args))
-            else:
-                self.type = ArrayT(self.name.type,
-                                   lookup_result.type.size[len(self.args):len(lookup_result.type.size)],
-                                   lookup_result.type.is_function_param)
-        return self
-
     def symbol(self):
         return Symbol(self.name, self.name.type)
 
@@ -919,19 +675,6 @@ class ExitFor(ExitStatement):
         cexit = coords[0]
         return ExitFor(cexit.start, var)
 
-    def relax(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.ForLoopBlock, accumulate=True)
-        if not lookup_result:
-            raise InappropriateExit(self.pos, self)
-        if self.name:
-            name_lookup_result = symbol_table.lookup(self.name.symbol(), by_origin=False)
-            if not name_lookup_result:
-                raise UndefinedSymbol(self.pos, self.name)
-            for blocks in lookup_result:
-                if blocks.block_obj.name == self.name.name:
-                    return self
-        return self
-
     def codegen(self, symbol_table: SymbolTable):
         lookup_result = symbol_table.lookup_block(SymbolTableBlockType.ForLoopBlock, accumulate=True)
         block = None
@@ -951,12 +694,6 @@ class ExitWhile(ExitStatement):
         cexit, cdo = coords
         return ExitWhile(cexit.start)
 
-    def relax(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.WhileLoopBlock)
-        if not lookup_result:
-            raise InappropriateExit(self.pos, self)
-        return self
-
     def codegen(self, symbol_table: SymbolTable):
         lookup_result = symbol_table.lookup_block(SymbolTableBlockType.WhileLoopBlock)
         lookup_result.llvm.builder.branch(lookup_result.llvm.obj)
@@ -972,12 +709,6 @@ class ExitSubroutine(ExitStatement):
         cexit, csub = coords
         return ExitSubroutine(cexit.start)
 
-    def relax(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.SubroutineBlock)
-        if not lookup_result:
-            raise InappropriateExit(self.pos, self)
-        return self
-
     def codegen(self, symbol_table: SymbolTable):
         lookup_result = symbol_table.lookup_block(SymbolTableBlockType.SubroutineBlock)
         if isinstance(lookup_result.llvm.obj, ir.Function):
@@ -992,12 +723,6 @@ class ExitFunction(ExitStatement):
     def create(attrs, coords, res_coord):
         cexit, cfunc = coords
         return ExitFunction(cexit.start)
-
-    def relax(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.FunctionBlock)
-        if not lookup_result:
-            raise InappropriateExit(self.pos, self)
-        return self
 
     def codegen(self, symbol_table: SymbolTable):
         lookup_result = symbol_table.lookup_block(SymbolTableBlockType.FunctionBlock)
@@ -1020,26 +745,6 @@ class AssignStatement(Statement):
             var = Variable(var.pos, var, var.type)
         cvar, ceq, cexpr = coords
         return AssignStatement(cvar.start, var, expr)
-
-    def relax(self, symbol_table: SymbolTable):
-        self.variable = self.variable.relax(symbol_table)
-        global_lookup_result = symbol_table.lookup(self.variable.symbol(), by_type=False, by_origin=False)
-        local_lookup_result = symbol_table.lookup(self.variable.symbol(), local=True, by_type=False, by_origin=False)
-        if local_lookup_result:
-            pass
-        else:
-            if global_lookup_result:
-                pass
-            else:
-                if isinstance(self.variable, Variable):
-                    result = VariableDecl(self.pos, self.variable, self.expr)
-                    return result.relax(symbol_table)
-                if not isinstance(self.variable, ArrayIndex):
-                    raise UndefinedSymbol(self.pos, self.variable.name)
-        self.expr = self.expr.relax(symbol_table, lvalue=False)
-        if not self.expr.type.castable_to(self.variable.type):
-            raise ConversionError(self.pos, self.expr.type, self.variable.type)
-        return self
 
     def codegen(self, symbol_table: SymbolTable):
         const_zero = ir.Constant(ir.IntType(32), 0)
@@ -1079,26 +784,6 @@ class ForLoop(Statement):
         var = Variable(varname.pos, varname, varname.type)
         next_variable = Variable(next_varname.pos, next_varname, next_varname.type)
         return ForLoop(var, cvar.start, start, cstart, end, cend, body, next_variable, cnext_varname)
-
-    def relax(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup(self.variable.symbol(), local=True, by_type=False, by_origin=False)
-        if lookup_result:
-            raise RedefinitionError(self.cond_coord, self.variable.name, lookup_result.name)
-        if not isinstance(self.variable.type, IntegralT):
-            raise NotIntFor(self.cond_coord, self.variable.type)
-        symbol_table.add(self.variable.symbol())
-        if self.variable.name != self.next.name:
-            raise UnexpectedNextFor(self.next_coord, self.variable.name, self.next.name)
-        self.start = self.start.relax(symbol_table, lvalue=True)
-        self.end = self.end.relax(symbol_table, lvalue=True)
-        if not self.start.type.castable_to(self.variable.type):
-            raise ConversionError(self.start_coord, self.start.type, self.variable.type)
-        if not self.end.type.castable_to(self.variable.type):
-            raise ConversionError(self.start_coord, self.end.type, self.variable.type)
-        for_block = symbol_table.new_local(SymbolTableBlockType.ForLoopBlock, block_obj=self.variable)
-        for idx, stmt in enumerate(self.body):
-            self.body[idx] = stmt.relax(for_block)
-        return self
 
     def codegen(self, symbol_table: SymbolTable):
         start = self.codegen_start(symbol_table)
@@ -1175,16 +860,6 @@ class WhileLoop(Statement):
         self.condition = condition
         self.type = loop_type
 
-    def relax(self, symbol_table: SymbolTable):
-        if self.condition:
-            self.condition = self.condition.relax(symbol_table, lvalue=False)
-            if not isinstance(self.condition.type, IntegralT):
-                raise WhileNotIntCondition(self.pos, self.condition.type)
-        while_block = symbol_table.new_local(SymbolTableBlockType.WhileLoopBlock)
-        for idx, stmt in enumerate(self.body):
-            self.body[idx] = stmt.relax(while_block)
-        return self
-
     def codegen(self, symbol_table: SymbolTable):
         if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
             if isinstance(symbol_table.llvm.builder.function, ir.Function):
@@ -1248,18 +923,6 @@ class IfElseStatement(Statement):
         cond, then_branch, else_branch = attrs
         cif, ccond, cthen_kw, cthen_br, celse_stmt, cend_kw, cif_kw = coords
         return IfElseStatement(ccond.start, cond, then_branch, else_branch)
-
-    def relax(self, symbol_table: SymbolTable):
-        self.condition = self.condition.relax(symbol_table)
-        if not isinstance(self.condition.type, IntegralT):
-            raise IfNotIntCondition(self. pos, self.condition.type)
-        if_block = symbol_table.new_local(SymbolTableBlockType.IfThenBlock)
-        for idx, stmt in enumerate(self.then_branch):
-            self.then_branch[idx] = stmt.relax(if_block)
-        else_block = symbol_table.new_local(SymbolTableBlockType.IfElseBlock)
-        for idx, stmt in enumerate(self.else_branch):
-            self.else_branch[idx] = stmt.relax(else_block)
-        return self
 
     def codegen(self, symbol_table: SymbolTable):
         if len(self.else_branch) == 0:
@@ -1355,13 +1018,6 @@ class UnaryOpExpr(Expr):
         cop, cleft = coords
         return UnaryOpExpr(cop.start, op, left)
 
-    def relax(self, symbol_table: SymbolTable, lvalue=True):
-        self.unary_expr = self.unary_expr.relax(symbol_table, lvalue)
-        if isinstance(self.unary_expr.type, ArrayT) or (not isinstance(self.unary_expr.type, NumericT)):
-            raise UnaryBadType(self.pos, self.unary_expr.type, self.op)
-        self.type = self.unary_expr.type
-        return self
-
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         expr_val = self.unary_expr.codegen(symbol_table, False)
         if self.op == '-':
@@ -1384,33 +1040,6 @@ class BinOpExpr(Expr):
         left, op, right = attrs
         cleft, cop, cright = coords
         return BinOpExpr(cleft.start, left, op, right)
-
-    def relax(self, symbol_table: SymbolTable, lvalue=True):
-        self.left = self.left.relax(symbol_table, lvalue)
-        self.right = self.right.relax(symbol_table, lvalue)
-        if isinstance(self.left.type, NumericT) and isinstance(self.right.type, NumericT):
-            result_type = None
-            if self.op in ('+', '-', '*'):
-                if self.left.type.castable_to(self.right.type):
-                    result_type = self.right.type
-                elif self.right.type.castable_to(self.left.type):
-                    result_type = self.left.type
-            elif self.op == '/':
-                result_type = DoubleT()
-            elif self.op in ('>', '<', '>=', '<=', '=', '<>'):
-                result_type = BoolT()
-            else:
-                raise UndefinedBinOperType(self.pos, self.left.type, self.op, self.right.type)
-            if not result_type:
-                raise BinBadType(self.pos, self.left.type, self.op, self.right.type)
-            self.type = result_type
-        elif isinstance(self.left.type, StringT) and isinstance(self.right.type, StringT):
-            if self.op != '+':
-                raise BinBadType(self.pos, self.left.type, self.op, self.right.type)
-            self.type = StringT()
-        else:
-            raise BinBadType(self.pos, self.left.type, self.op, self.right.type)
-        return self
 
     def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
         lhs_val = self.left.codegen(symbol_table, False)
@@ -1450,11 +1079,6 @@ class Program:
         global_decls = attrs[0]
         program = Program(global_decls)
         return program
-
-    def relax(self):
-        for idx, decl in enumerate(self.decls):
-            self.decls[idx] = decl.relax(self.symbol_table)
-        return self
 
     def codegen(self, module_name=None):
         program_module = ir.Module(name=module_name if module_name else __file__)

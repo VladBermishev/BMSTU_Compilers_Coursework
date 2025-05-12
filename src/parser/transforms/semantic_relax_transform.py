@@ -53,6 +53,18 @@ class SemanticRelaxTransform:
                 return SRExit.transform(node, st)
             case t if t is basic_ast.AssignStatement:
                 return SRAssignStatement.transform(node, st)
+            case t if t is basic_ast.ForLoop:
+                return SRForLoop.transform(node, st)
+            case t if t is basic_ast.WhileLoop:
+                return SRWhileLoop.transform(node, st)
+            case t if t is basic_ast.IfElseStatement:
+                return SRIfStatement.transform(node, st)
+            case t if t is basic_ast.ImplicitTypeCast:
+                return SRImplicitTypeCast.transform(node, st)
+            case t if t is basic_ast.UnaryOpExpr:
+                return SRUnaryOpExpr.transform(node, st)
+            case t if t is basic_ast.BinOpExpr:
+                return SRBinaryOpExpr.transform(node, st)
         return None
 
 
@@ -333,17 +345,14 @@ class SRAssignStatement:
     @staticmethod
     def transform(node: basic_ast.AssignStatement, st: SymbolTable):
         result = node
-        if isinstance(node.variable, basic_ast.Variable):
-            try:
-                result.variable = SemanticRelaxTransform.transform(result.variable, st)
-            except UndefinedSymbol as e:
-                #Then it's a variable declaration
-                var_decl = basic_ast.VariableDecl(result.pos, result.variable, result.expr)
-                return SemanticRelaxTransform.transform(var_decl, st)
-        else:
-            #Handle ArrayIndex vs FuncCall
+        try:
             result.variable = SemanticRelaxTransform.transform(result.variable, st)
-            pass
+        except UndefinedSymbol as e:
+            # Then it's a variable declaration
+            if isinstance(result.variable, (basic_ast.ArrayIndex, basic_ast.FuncCall)):
+                raise e
+            var_decl = basic_ast.VariableDecl(result.pos, result.variable, result.expr)
+            return SemanticRelaxTransform.transform(var_decl, st)
         result.expr = SemanticRelaxTransform.transform(result.expr, st)
         if common_type(result.expr.type, result.variable.type) != result.variable.type:
             raise ConversionError(result.pos, result.expr.type, result.variable.type)
@@ -353,4 +362,91 @@ class SRAssignStatement:
 class SRForLoop:
     @staticmethod
     def transform(node: basic_ast.ForLoop, st: SymbolTable):
-        pass
+        result = node
+        if not isinstance(node.variable.type, IntegralT):
+            raise NotIntFor(node.cond_coord, node.variable.type)
+        if node.variable.name != node.next.name:
+            raise UnexpectedNextFor(node.next_coord, node.variable.name, node.next.name)
+        result.start = SemanticRelaxTransform.transform(result.start, st)
+        result.end = SemanticRelaxTransform.transform(result.end, st)
+        if common_type(result.variable.type, result.start.type) != result.variable.type:
+            raise ConversionError(result.start_coord, result.start.type, result.variable.type)
+        if common_type(result.variable.type, result.end.type) != result.variable.type:
+            raise ConversionError(result.end_coord, result.end.type, result.variable.type)
+        result.start = ImplicitCastAstGenerator.generate(result.start, result.variable.type)
+        result.end = ImplicitCastAstGenerator.generate(result.end, result.variable.type)
+        for_block = st.new_table(STBlockType.ForLoopBlock)
+        for_block.add(SymbolFactory.create(result.variable))
+        for_block.add(SymbolFactory.create(basic_ast.ExitFor(result.variable.pos, result.variable)))
+        for idx, statement in enumerate(result.body):
+            result.body[idx] = SemanticRelaxTransform.transform(statement, for_block)
+        return result
+
+class SRWhileLoop:
+    @staticmethod
+    def transform(node: basic_ast.WhileLoop, st: SymbolTable):
+        result = node
+        if result.condition is not None:
+            result.condition = SemanticRelaxTransform.transform(result.condition, st)
+            if not isinstance(result.condition.type, IntegralT):
+                raise WhileNotIntCondition(result.pos, result.condition.type)
+        while_block = st.new_table(STBlockType.WhileLoopBlock)
+        for idx, statement in enumerate(result.body):
+            result.body[idx] = SemanticRelaxTransform.transform(statement, while_block)
+        return result
+
+class SRIfStatement:
+    @staticmethod
+    def transform(node: basic_ast.IfElseStatement, st: SymbolTable):
+        result = node
+        result.condition = SemanticRelaxTransform.transform(result.condition, st)
+        if not isinstance(result.condition.type, IntegralT):
+            raise IfNotIntCondition(result.pos, result.condition.type)
+        if_block = st.new_table(STBlockType.IfThenBlock)
+        for idx, statement in enumerate(result.then_branch):
+            result.then_branch[idx] = SemanticRelaxTransform.transform(statement, if_block)
+        else_block = st.new_table(STBlockType.IfElseBlock)
+        for idx, statement in enumerate(result.else_branch):
+            result.else_branch[idx] = SemanticRelaxTransform.transform(statement, else_block)
+        return result
+
+class SRImplicitTypeCast:
+    @staticmethod
+    def transform(node: basic_ast.ImplicitTypeCast, st: SymbolTable):
+        return node
+
+class SRUnaryOpExpr:
+    @staticmethod
+    def transform(node: basic_ast.UnaryOpExpr, st: SymbolTable):
+        result = node
+        result.unary_expr = SemanticRelaxTransform.transform(result.unary_expr, st)
+        if isinstance(result.unary_expr.type, ArrayT) or (not isinstance(result.unary_expr.type, NumericT)):
+            raise UnaryBadType(result.pos, result.unary_expr.type, result.op)
+        result.type = result.unary_expr.type
+        return result
+
+class SRBinaryOpExpr:
+    @staticmethod
+    def transform(node: basic_ast.BinOpExpr, st: SymbolTable):
+        result = node
+        result.left = SemanticRelaxTransform.transform(result.left, st)
+        result.right = SemanticRelaxTransform.transform(result.right, st)
+        if isinstance(result.left.type, NumericT) or isinstance(result.right.type, NumericT):
+            result.type = None
+            if result.op in ('+', '-', '*'):
+                result.type = common_type(result.left.type, result.right.type)
+            elif result.op == '/':
+                result.type = DoubleT()
+            elif result.op in ('>', '<', '>=', '<=', '=', '<>'):
+                result.type = BoolT()
+            else:
+                raise UndefinedBinOperType(result.pos, result.left.type, result.op, result.right.type)
+            if result.type is None:
+                raise BinBadType(result.pos, result.left.type, result.op, result.right.type)
+        elif isinstance(result.left.type, StringT) and isinstance(result.right.type, StringT):
+            if result.op != '+':
+                raise BinBadType(result.pos, result.left.type, result.op, result.right.type)
+            result.type = StringT()
+        else:
+            raise BinBadType(result.pos, result.left.type, result.op, result.right.type)
+        return result

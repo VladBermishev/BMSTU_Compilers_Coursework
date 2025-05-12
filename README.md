@@ -4,4 +4,4 @@
 ### TODO
 - Rewrite operator[] in ST !
 - fix lookup_bug.tbasic
-- Finish SRT
+- Add ArrayReference
