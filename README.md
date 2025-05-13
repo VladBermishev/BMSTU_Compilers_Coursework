@@ -2,6 +2,7 @@
 ## [Grammar](https://github.com/VladBermishev/BMSTU_Compilers_Coursework/blob/master/doc/grammar.bnf)
 
 ### TODO
-- Rewrite operator[] in ST !
-- fix lookup_bug.tbasic
 - Add ArrayReference
+- Pointers
+- Pretty AST
+- Godbolt integration

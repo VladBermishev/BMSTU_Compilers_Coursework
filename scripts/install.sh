@@ -10,5 +10,7 @@ ROOT_DIR=$(realpath "$SCRIPT_DIR/..")
 STD_FILEPATH="$ROOT_DIR/std-library/std.basic"
 INSTALL_PATH="/usr/local/lib/tbasic"
 
+echo "Installing STD library..."
 mkdir -p "$INSTALL_PATH"
 cp "$STD_FILEPATH" "$INSTALL_PATH"
+echo "STD library installed"

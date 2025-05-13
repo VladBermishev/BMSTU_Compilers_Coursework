@@ -8,60 +8,51 @@ class Transform:
 
 class ConstantFoldingTransform(Transform):
     @staticmethod
-    def transform(ast_root):
-        if not isinstance(ast_root, basic_ast.Program):
-            raise TypeError("ConstantFoldingTransform: Expected basic_ast.Program, got {}".format(type(ast_root)))
-        return CFFallThrough.transform(ast_root)
-
-
-class CFFallThrough:
-    @staticmethod
     def transform(node):
         result = node
         match type(node):
             case t if t is basic_ast.Program:
                 for idx, decl in enumerate(result.decls):
-                    result.decls[idx] = CFFallThrough.transform(decl)
+                    result.decls[idx] = ConstantFoldingTransform.transform(decl)
             case t if t is basic_ast.SubroutineDef:
                 for idx, stmt in enumerate(result.body):
-                    result.body[idx] = CFFallThrough.transform(stmt)
+                    result.body[idx] = ConstantFoldingTransform.transform(stmt)
             case t if t is basic_ast.FunctionDef:
                 for idx, stmt in enumerate(result.body):
-                    result.body[idx] = CFFallThrough.transform(stmt)
+                    result.body[idx] = ConstantFoldingTransform.transform(stmt)
             case t if t is basic_ast.VariableDecl:
-                result.variable = CFFallThrough.transform(result.variable)
-                result.init_value = CFFallThrough.transform(result.init_value)
+                result.variable = ConstantFoldingTransform.transform(result.variable)
+                result.init_value = ConstantFoldingTransform.transform(result.init_value)
             case t if t is basic_ast.Array:
                 for idx, sz in enumerate(result.size):
-                    result.size[idx] = CFFallThrough.transform(sz)
+                    result.size[idx] = ConstantFoldingTransform.transform(sz)
             case t if isinstance(result, basic_ast.Expr):
                 result = CFExpr.transform(result)
             case t if t is basic_ast.InitializerList:
                 for idx, init_list_val in enumerate(result.values):
-                    result.values[idx] = CFFallThrough.transform(init_list_val)
-            case t if t in (basic_ast.FuncCallOrArrayIndex, basic_ast.FuncCall, basic_ast.ArrayIndex):
+                    result.values[idx] = ConstantFoldingTransform.transform(init_list_val)
+            case t if t in (basic_ast.FuncCallOrArrayIndex, basic_ast.FuncCall, basic_ast.ArrayIndex, basic_ast.PrintCall):
                 for idx, arg in enumerate(result.args):
-                    result.args[idx] = CFFallThrough.transform(arg)
+                    result.args[idx] = ConstantFoldingTransform.transform(arg)
             case t if t is basic_ast.AssignStatement:
                 if isinstance(result.variable, basic_ast.FuncCallOrArrayIndex):
-                    result.variable = CFFallThrough.transform(result.variable)
+                    result.variable = ConstantFoldingTransform.transform(result.variable)
                 result.expr = CFExpr.transform(result.expr)
             case t if t is basic_ast.ForLoop:
                 result.start = CFExpr.transform(result.start)
                 result.end = CFExpr.transform(result.end)
                 for idx, stmt in enumerate(result.body):
-                    result.body[idx] = CFFallThrough.transform(stmt)
+                    result.body[idx] = ConstantFoldingTransform.transform(stmt)
             case t if t is basic_ast.WhileLoop:
                 if result.condition is not None:
                     result.condition = CFExpr.transform(result.condition)
                 for idx, stmt in enumerate(result.body):
-                    result.body[idx] = CFFallThrough.transform(stmt)
-            case t if t is basic_ast.IfElseStatement:
-                    result.condition = CFExpr.transform(result.condition)
+                    result.body[idx] = ConstantFoldingTransform.transform(stmt)
             case t if t is basic_ast.IfElseStatement:
                 result.condition = CFExpr.transform(result.condition)
+            case t if isinstance(node, basic_ast.Expr):
+                result.condition = CFExpr.transform(result.condition)
         return result
-
 
 class CFExpr:
     @staticmethod
@@ -74,6 +65,9 @@ class CFExpr:
                 result = CFUnaryExpr.transform(result)
             case t if t is basic_ast.BinOpExpr:
                 result = CFBinaryExpr.transform(result)
+            case t if t is basic_ast.ImplicitTypeCast:
+                result = ConstantFoldingTransform.transform(result.expr)
+                result.type = node.type
         return result
 
 

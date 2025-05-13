@@ -44,6 +44,10 @@ namespace basic_std{
             return pool.front().data();
         }
 
+        std::size_t StringLength(string_type::const_pointer str){
+            return string_type::traits_type::length(str);
+        }
+
         void StringFree(string_type::const_pointer str){
             const auto&& __pred = [str](const string_type& value){ return value.data() == str; };
             if(std::size_t __removed = pool.remove_if(__pred); __removed > 1)

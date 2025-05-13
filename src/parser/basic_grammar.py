@@ -80,7 +80,7 @@ NCommaList |= ',', NCommaList, lambda vs: 1 + vs
 NCommaList |= lambda: 1
 
 NVarnameOrArrayParam |= NVarname, Variable.create
-NVarnameOrArrayParam |= NVarname, "(", NCommaList, ")", Array.create
+NVarnameOrArrayParam |= NVarname, "(", NCommaList, ")", ArrayReference.create
 
 NArgumentsList |= NExpr, ",", NNonEmptyArgumentsList, lambda vd, vds: [vd] + vds
 NArgumentsList |= NExpr, lambda vd: [vd]
@@ -90,8 +90,8 @@ NNonEmptyArgumentsList |= NExpr, ",", NNonEmptyArgumentsList, lambda vd, vds: [v
 NNonEmptyArgumentsList |= NExpr, lambda vd: [vd]
 
 NVarnameOrArrayArg |= NVarname, Variable.create
-NVarnameOrArrayArg |= NVarname, "(", NNonEmptyArgumentsList, ")", Array.create_variable
-NVarnameOrArrayArg |= NVarname, "(", NCommaList, ")", Array.create_variable
+NVarnameOrArrayArg |= NVarname, "(", NNonEmptyArgumentsList, ")", Array.create
+NVarnameOrArrayArg |= NVarname, "(", NCommaList, ")", Array.create #array declaration with initializer-list
 
 NFuncCallOrArrayIndex |= NVarname, "(", NArgumentsList, ")", FuncCallOrArrayIndex.create
 NFuncCallOrArrayIndex |= IDENTIFIER, "(", NArgumentsList, ")", FuncCall.create
@@ -103,7 +103,8 @@ NType |= "%", lambda: IntegerT()
 NType |= "&", lambda: LongT()
 NType |= "!", lambda: FloatT()
 NType |= "#", lambda: DoubleT()
-NType |= '$', lambda: StringT()
+NType |= '$', lambda: PointerT(StringT())
+NType |= '@', lambda: Type()
 
 NStatements |= NStatement, NNonEmptyStatements, lambda vd, vds: [vd] + vds
 NStatements |= NExitStatement, lambda vd: [vd]
@@ -185,9 +186,9 @@ NPower |= NConst
 NPower |= '(', NExpr, ')'
 NPower |= NFuncCallOrArrayIndex
 
-NConst |= INTEGER, ConstExpr.createInt
-NConst |= FLOAT, ConstExpr.createFl
-NConst |= STRING, ConstExpr.createStr
+NConst |= INTEGER, ConstExpr.create_int
+NConst |= FLOAT, ConstExpr.create_float
+NConst |= STRING, ConstExpr.create_string
 
 if __name__ == "__main__":
     p = pe.Parser(NProgram)

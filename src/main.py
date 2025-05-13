@@ -24,6 +24,9 @@ if __name__ == '__main__':
         sys.exit(1)
     args = arg_parser.parse_args(sys.argv[1:-1])
     file_path = sys.argv[-1]
+    if not (Path(file_path).exists() and Path(file_path).is_file()):
+        print(f"fatal error: no input files, can't process given path as source: \"{file_path}\"", file=sys.stderr)
+        sys.exit(1)
     try:
         basic_parser = pe.Parser(basic_grammar.NProgram)
         basic_parser.add_skipped_domain('\\s')
@@ -42,10 +45,8 @@ if __name__ == '__main__':
         preprocessed_source = Preprocessor().process(Path(file_path))
         source_ast = basic_parser.parse(preprocessed_source)
         source_ast, source_st = SemanticRelaxTransform.transform(source_ast, standart_library=std_lib_ast)
-        source_ast = ConstantFoldingTransform.transform(source_ast)
+        if args.constant_folding:
+            source_ast = ConstantFoldingTransform.transform(source_ast)
         pprint(source_ast)
-        module = source_ast.codegen()
-        with open(Path(file_path).with_suffix('').with_suffix('.ll'), "w+") as fout:
-            fout.write(str(module))
     except pe.Error as e:
         logger.error(f'{file_path}: Error: {e.pos}: {e.message}')

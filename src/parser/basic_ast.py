@@ -1,27 +1,15 @@
 import abc
-import itertools
 from dataclasses import dataclass
-from llvmlite.ir import FunctionType
 from src.parser.errors import *
 from src.parser.basic_types import *
-from src.parser.symbol_table import SymbolTable, Symbol, SymbolTableBlockType, SymbolTableLLVMEntry
-from llvmlite import ir, binding
-from src.parser.global_constructor import GlobalConstructor, label_suffix, gep_opaque
 
 
 class Expr(abc.ABC):
     def __init__(self):
         self.type = Type()
 
-    def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
-        return self
-
-
 class Statement(abc.ABC):
-
-    def codegen(self, symbol_table: SymbolTable):
-        return self
-
+    pass
 
 @dataclass
 class Varname:
@@ -29,30 +17,15 @@ class Varname:
     name: str
     type: Type
 
+    @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
         varname, type = attrs
         cvarname, ctype = coords
-        return Varname(cvarname, varname, type)
-
-    def __eq__(self, other):
-        if isinstance(other, Varname):
-            return self.name == other.name and self.type == other.type
-        return False
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def mangle_str(self):
-        if len(self.type.name) == 1 or self.type.name == 'String':
-            return f"{self.name}{self.type.mangle_suff}"
+        return Varname(cvarname.start, varname, type)
 
     def __str__(self):
-        if len(self.type.name) == 1 or self.type.name == 'String':
-            return f"{self.name}{self.type.name}"
-        else:
-            return f"{self.type} {self.name}"
-
+        return f"Varname <line:{self.pos.line}, col:{self.pos.col}> \'{self.name}\' \'{self.type}\'"
 
 @dataclass
 class ConstExpr(Expr):
@@ -62,51 +35,25 @@ class ConstExpr(Expr):
 
     @staticmethod
     @pe.ExAction
-    def createInt(attrs, coords, res_coord):
+    def create_int(attrs, coords, res_coord):
         value = attrs[0]
         cvalue = coords[0]
         return ConstExpr(cvalue.start, value, IntegerT())
 
     @staticmethod
     @pe.ExAction
-    def createFl(attrs, coords, res_coord):
+    def create_float(attrs, coords, res_coord):
         value = attrs[0]
         cvalue = coords[0]
         return ConstExpr(cvalue.start, value, FloatT())
 
     @staticmethod
     @pe.ExAction
-    def createStr(attrs, coords, res_coord):
+    def create_string(attrs, coords, res_coord):
         value = attrs[0]
         cvalue = coords[0]
         value = value[1:-1].replace("\\n", '\n').replace("\\t", ' ' * 4)
         return ConstExpr(cvalue.start, value, StringT(length=len(value)))
-
-    def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
-        if self.type == StringT():
-            if symbol_table.block_type == SymbolTableBlockType.GlobalBlock:
-                return ir.Constant(self.type.llvm_type(), [ord(char) for char in self.value] + [0])
-            else:
-                if hasattr(self, "__cached_var"):
-                    return self.__cached_var
-                else:
-                    if hasattr(ConstExpr, "static_cnt"):
-                        ConstExpr.static_cnt += 1
-                    else:
-                        ConstExpr.static_cnt = 1
-                    var = ir.GlobalVariable(symbol_table.llvm.module, self.type.llvm_type(), f".str.{ConstExpr.static_cnt}")
-                    var.initializer = ir.Constant(self.type.llvm_type(), [ord(char) for char in self.value] + [0])
-                    self.__cached_var = var
-                    return self.__cached_var
-        elif self.type == FloatT():
-            return ir.Constant(self.type.llvm_type(), float(self.value))
-        else:
-            return ir.Constant(self.type.llvm_type(), int(self.value))
-
-    def __str__(self):
-        return str(self.value)
-
-
 
 @dataclass
 class Variable:
@@ -121,18 +68,9 @@ class Variable:
         cvarname = coords[0]
         return Variable(cvarname.start, varname, varname.type)
 
-    def symbol(self):
-        return Symbol(self.name, self.type, False)
-
-
-    """ I assume that would be called only from expressions codegen """
-    def codegen(self, symbol_table, lvalue: bool = False):
-        lookup_result = symbol_table.lookup(self.symbol(), by_origin=False)
-        if lvalue:
-            return lookup_result.llvm_obj
-        else:
-            return symbol_table.llvm.builder.load(lookup_result.llvm_obj, f"{self.name.mangle_str()}.load")
-
+@dataclass
+class VariableReference(Variable):
+    pass
 
 @dataclass
 class Array(Variable):
@@ -140,35 +78,21 @@ class Array(Variable):
 
     @staticmethod
     @pe.ExAction
-    def create_variable(attrs, coords, res_coord):
+    def create(attrs, coords, res_coord):
         varname, sizes = attrs
         cvarname, cop, cexpr, ccp = coords
         return Array(cvarname.start, varname, ArrayT(varname.type, sizes), sizes)
 
+@dataclass
+class ArrayReference(Array):
     @staticmethod
     @pe.ExAction
-    def create_param(attrs, coords, res_coord):
+    def create(attrs, coords, res_coord):
         varname, dimensions = attrs
         cvarname, cop, cexpr, ccp = coords
         size = [0] * dimensions
         expression_sizes = [ConstExpr(cop.start, 0, IntegerT())] * dimensions
-        return Array(cvarname.start, varname, ArrayT(varname.type, size), expression_sizes)
-
-    """ I assume that would be called only from expressions codegen """
-
-    def codegen(self, symbol_table, lvalue: bool = False):
-        lookup_result = symbol_table.lookup(self.symbol(), by_origin=False)
-        if lvalue:
-            return lookup_result.llvm_obj
-        else:
-            if self.type.is_function_param:
-                return ArrayIndex.get_func_ptr(symbol_table.llvm.builder, lookup_result.llvm_obj, [ir.Constant(ir.IntType(32), 0)])
-            else:
-                return ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, lookup_result.llvm_obj, [ir.Constant(ir.IntType(32), 0)])
-
-@dataclass
-class ArrayReference(Variable):
-    pass
+        return ArrayReference(cvarname.start, varname, PointerT(ArrayT(varname.type, size)), expression_sizes)
 
 @dataclass
 class FunctionProto:
@@ -184,21 +108,6 @@ class FunctionProto:
         cfunc_kw, cvar, cop, cparams, ccp = coords
         return FunctionProto(cvar.start, name, args, ProcedureT(name.type, [arg.type for arg in args]))
 
-    def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
-        arguments = []
-        symbols = []
-        arg_list = self.args
-        for arg in arg_list:
-            arguments.append(arg.type.llvm_type())
-            symbols.append(Symbol(arg.name, arg.type))
-            if isinstance(arg.type, ArrayT):
-                for len_idx in range(len(arg.type.size)):
-                    arguments.append(ir.IntType(32))
-                    symbols.append(Symbol(Varname(pe.Position(), f"{arg.name.name}.len.{len_idx+1}", IntegerT()), IntegerT()))
-        return ir.FunctionType(self.type.retT.llvm_type(), arguments), symbols
-
-
-
 @dataclass
 class FunctionDecl:
     pos: pe.Position
@@ -212,20 +121,6 @@ class FunctionDecl:
         cdecl_kw, cproto = coords
         return FunctionDecl(cdecl_kw.start, proto, True)
 
-    def symbol(self):
-        return Symbol(self.proto.name, self.proto.type, self.external)
-
-    def codegen(self, symbol_table: SymbolTable) -> ir.Function:
-        if self.proto.name.name == "Len" and self.proto.name.type == IntegerT():
-            return None
-        function_proto, symbols = self.proto.codegen(symbol_table)
-        func = ir.Function(symbol_table.llvm.module, function_proto, self.proto.name.name)
-        for arg_symbol, arg in zip(symbols, func.args):
-            arg.name = arg_symbol.name.name
-        symbol_table.add(self.symbol().assoc(func))
-        return func
-
-
 @dataclass
 class FunctionDef:
     pos: pe.Position
@@ -238,48 +133,6 @@ class FunctionDef:
         proto, stmts = attrs
         cfunproto, cbody, cend_kw, cfun_kw = coords
         return FunctionDef(cfunproto.start, proto, stmts)
-
-    def symbol(self):
-        return Symbol(self.proto.name, self.proto.type, False)
-
-    def codegen(self, symbol_table: SymbolTable) -> ir.Function:
-        function_proto, symbols = self.proto.codegen(symbol_table)
-        func = ir.Function(symbol_table.llvm.module, function_proto, self.proto.name.name)
-        symbol_table.add(self.symbol().assoc(func))
-
-        for arg_symbol, arg in zip(symbols, func.args):
-            arg.name = arg_symbol.name.name
-        entry_block = func.append_basic_block(name="entry")
-
-        return_block = func.append_basic_block(name="return")
-
-        builder = ir.IRBuilder(entry_block)
-        body_symbol_table = symbol_table.new_local(SymbolTableBlockType.FunctionBlock,
-                                                   llvm_entry=SymbolTableLLVMEntry(symbol_table.llvm.module, builder, func))
-
-        ret_var = Variable(self.proto.name.pos, self.proto.name, self.proto.type.retT)
-        ret_val = builder.alloca(ret_var.type.llvm_type(), 1, ret_var.name.name)
-        body_symbol_table.add(ret_var.symbol().assoc(ret_val))
-        builder.store(ir.Constant(self.proto.type.retT.llvm_type(), self.proto.type.retT.default_value()), ret_val)
-        """ 
-        Maybe store default value???
-        """
-        for arg_symbol, arg in zip(symbols, func.args):
-            alloc_instr = builder.alloca(arg.type, 1, arg.name)
-            body_symbol_table.add(arg_symbol.assoc(alloc_instr))
-            builder.store(arg, alloc_instr)
-
-        for stmt in self.body:
-            stmt.codegen(body_symbol_table)
-
-        if builder.block.terminator is None:
-            builder.branch(return_block)
-
-        return_builder = ir.IRBuilder(return_block)
-        return_builder.ret(return_builder.load(ret_val))
-        return func
-
-
 
 @dataclass
 class SubroutineProto:
@@ -295,19 +148,6 @@ class SubroutineProto:
         varname = Varname(cvar.start, name, VoidT())
         return SubroutineProto(csub_kw.start, varname, args, ProcedureT(VoidT(), [arg.type for arg in args]))
 
-    def codegen(self, symbol_table: SymbolTable) -> tuple[FunctionType, list[Symbol]]:
-        arguments = []
-        symbols = []
-        for arg in self.args:
-            arguments.append(arg.type.llvm_type())
-            symbols.append(Symbol(arg.name, arg.type))
-            if isinstance(arg.type, ArrayT):
-                for len_idx in range(len(arg.type.size)):
-                    arguments.append(ir.IntType(32))
-                    symbols.append(
-                        Symbol(Varname(pe.Position(), f"{arg.name.name}.len.{len_idx + 1}", IntegerT()), IntegerT()))
-        return ir.FunctionType(self.type.retT.llvm_type(), arguments), symbols
-
 @dataclass
 class SubroutineDecl:
     pos: pe.Position
@@ -320,18 +160,6 @@ class SubroutineDecl:
         proto = attrs[0]
         cdecl_kw, cproto = coords
         return SubroutineDecl(cdecl_kw.start, proto, True)
-
-    def symbol(self):
-        return Symbol(self.proto.name, self.proto.type, self.external)
-
-    def codegen(self, symbol_table) -> ir.Function:
-        subroutine_proto, symbols = self.proto.codegen(symbol_table)
-        func = ir.Function(symbol_table.llvm.module, subroutine_proto, self.proto.name.name)
-        for arg_symbol, arg in zip(symbols, func.args):
-            arg.name = arg_symbol.name.name
-        symbol_table.add(self.symbol().assoc(func))
-        return func
-
 
 @dataclass
 class SubroutineDef:
@@ -346,38 +174,6 @@ class SubroutineDef:
         csubproto, cbody, cend_kw, csub_kw = coords
         return SubroutineDef(csubproto.start, proto, stmts)
 
-    def symbol(self):
-        return Symbol(self.proto.name, self.proto.type, False)
-
-    def codegen(self, symbol_table) -> ir.Function:
-        subroutine_proto, symbols = self.proto.codegen(symbol_table)
-        sub = ir.Function(symbol_table.llvm.module, subroutine_proto, self.proto.name.name)
-        symbol_table.add(self.symbol().assoc(sub))
-
-        for arg_symbol, arg in zip(symbols, sub.args):
-            arg.name = arg_symbol.name.name
-        entry_block = sub.append_basic_block(name="entry")
-
-        return_block = sub.append_basic_block(name="return")
-        return_builder = ir.IRBuilder(return_block)
-        return_builder.ret_void()
-
-        builder = ir.IRBuilder(entry_block)
-        body_symbol_table = symbol_table.new_local(SymbolTableBlockType.FunctionBlock,
-                                                   llvm_entry=SymbolTableLLVMEntry(symbol_table.llvm.module, builder, sub))
-
-        for arg_symbol, arg in zip(symbols, sub.args):
-            alloc_instr = builder.alloca(arg.type, 1, arg.name)
-            body_symbol_table.add(arg_symbol.assoc(alloc_instr))
-            builder.store(arg, alloc_instr)
-
-        for stmt in self.body:
-            stmt.codegen(body_symbol_table)
-        if builder.block.terminator is None:
-            builder.branch(return_block)
-        return sub
-
-
 @dataclass
 class InitializerList:
     pos: pe.Position
@@ -390,7 +186,6 @@ class InitializerList:
         vals = attrs[0]
         cop, cvalues, ccp = coords
         return InitializerList(cop.start, vals, VoidT())
-
 
 @dataclass
 class VariableDecl:
@@ -405,69 +200,6 @@ class VariableDecl:
         cdim_kw, cvar, cvar_init = coords
         return VariableDecl(cdim_kw.start, var, var_ini)
 
-    def codegen(self, symbol_table: SymbolTable):
-        if symbol_table.block_type != SymbolTableBlockType.GlobalBlock:
-            alloc_instr = symbol_table.llvm.builder.alloca(self.variable.type.llvm_type(), 1, self.variable.name.mangle_str())
-            if self.init_value:
-                if isinstance(self.init_value, InitializerList):
-                    for idx in itertools.product(*[range(s) for s in self.variable.size]):
-                        val = self.init_value.values[idx[0]]
-                        for i in range(1, len(idx)):
-                            val = val[idx[i]]
-                        arr_ptr = ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, alloc_instr, list(idx))
-                        relaxed = self.cast_init_value(self.variable.type.type, val, symbol_table, symbol_table.llvm.builder)
-                        symbol_table.llvm.builder.store(relaxed, arr_ptr)
-                else:
-                    buffer = self.cast_init_value(self.variable.type, self.init_value, symbol_table, symbol_table.llvm.builder)
-                    symbol_table.llvm.builder.store(buffer, alloc_instr)
-            symbol_table.add(self.variable.symbol().assoc(alloc_instr))
-            return alloc_instr
-        else:
-            var = ir.GlobalVariable(symbol_table.llvm.module, self.variable.type.llvm_type(), self.variable.name.mangle_str())
-            if self.init_value:
-                if isinstance(self.init_value, ConstExpr) and self.variable.type == self.init_value.type:
-                    var.initializer = self.cast_init_value(self.variable.type, self.init_value, symbol_table, symbol_table.llvm.builder)
-                elif isinstance(self.init_value, (InitializerList, Expr)):
-                    sub_proto = ir.FunctionType(ir.VoidType(), [])
-                    sub = ir.Function(symbol_table.llvm.module,
-                                      sub_proto,
-                                      f"__bas_global_var_init.{self.variable.name.mangle_str()}")
-                    block = sub.append_basic_block(name="entry")
-                    init_builder = ir.IRBuilder(block)
-                    symbol_table.llvm.builder = init_builder
-                    if isinstance(self.init_value, Expr):
-                        var.initializer = ir.Constant(self.init_value.type.llvm_type(), self.init_value.type.default_value())
-                        buffer = self.cast_init_value(self.variable.type, self.init_value, symbol_table, symbol_table.llvm.builder)
-                        symbol_table.llvm.builder.store(buffer, var)
-                    else:
-                        var.initializer = ir.Constant(self.variable.type.llvm_type(), self.variable.type.default_value())
-                        for idx in itertools.product(*[range(s) for s in self.variable.size]):
-                            val = self.init_value.values[idx[0]]
-                            for i in range(1, len(idx)):
-                                val = val[idx[i]]
-                            const_expr_idx = [ir.Constant(ir.IntType(32), idx_idx) for idx_idx in idx]
-                            arr_ptr = ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, var, const_expr_idx)
-                            relaxed = self.cast_init_value(self.variable.type.type, val, symbol_table, symbol_table.llvm.builder)
-                            symbol_table.llvm.builder.store(relaxed, arr_ptr)
-                    symbol_table.llvm.builder.ret_void()
-                    lookup_result = symbol_table.lookup(Program.global_constructor_symbol(), by_type=False, by_origin=False)
-                    if isinstance(lookup_result.llvm_obj, ir.Function):
-                        glob_builder = ir.IRBuilder(lookup_result.llvm_obj.entry_basic_block)
-                        with glob_builder.goto_entry_block():
-                            glob_builder.call(sub, [])
-                    else:
-                        raise RuntimeError("llvm_obj isn't ir.Function")
-                    symbol_table.llvm.builder = None
-            symbol_table.add(self.variable.symbol().assoc(var))
-            return var
-
-    def cast_init_value(self, tp, val, symbol_table: SymbolTable, builder: ir.IRBuilder):
-        value = val.codegen(symbol_table, False)
-        if tp != val.type:
-            value = val.type.cast_to(tp, builder)(value)
-        return value
-
-
 @dataclass
 class FuncCallOrArrayIndex:
     pos: pe.Position
@@ -481,11 +213,10 @@ class FuncCallOrArrayIndex:
         cvarname, cop, cargs, ccp = coords
         return FuncCallOrArrayIndex(cvarname.start, varname, args)
 
-
 @dataclass
 class PrintCall:
     pos: pe.Position
-    expr: list[Expr]
+    args: list[Expr]
 
     @staticmethod
     @pe.ExAction
@@ -510,94 +241,6 @@ class FuncCall:
             func_name = Varname(cfunc.start, func_name, VoidT())
         return FuncCall(cfunc.start, func_name, args, func_name.type)
 
-    def symbol(self):
-        return Symbol(self.name, ProcedureT(self.name.type, [arg.type for arg in self.args]))
-
-    def print_symbols(self):
-        return [Symbol(self.name, ProcedureT(self.name.type, [arg.type])) for arg in self.args]
-
-    def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
-        const_zero = ir.Constant(ir.IntType(32), 0)
-        const_one = ir.Constant(ir.IntType(32), 1)
-        if self.name.name == "Print":
-            for arg in self.args:
-                lookup_result = symbol_table.lookup(Program.print_symbol(arg.type))
-                value = arg.codegen(symbol_table, False)
-                if isinstance(value, ir.GlobalVariable) and isinstance(arg.type, StringT):
-                    value = ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, value, [const_zero])
-                symbol_table.llvm.builder.call(lookup_result.llvm_obj, [value])
-        elif self.name.name == "Len" and self.name.type == IntegerT():
-            arg = self.args[0].symbol()
-            len_val = None
-            if isinstance(self.args[0], Array):
-                len_val = symbol_table.lookup(Symbol(Varname(pe.Position(), f"{arg.name.name}.len.1", IntegerT()), IntegerT()))
-            elif isinstance(self.args[0], ArrayIndex):
-                lookup_result = symbol_table.lookup(arg)
-                idx = len(lookup_result.type.size) - len(arg.type.size) + 1
-                len_val = symbol_table.lookup(Symbol(Varname(pe.Position(), f"{arg.name.name}.len.{idx}", IntegerT()), IntegerT()))
-            return symbol_table.llvm.builder.load(len_val.llvm_obj)
-        else:
-            lookup_result = symbol_table.lookup(self.symbol(), by_origin=False, accumulate=True)
-            name_lookup_result = symbol_table.lookup(self.symbol(), by_type=False, by_origin=False, accumulate=True)
-            func = None
-            args = []
-            if lookup_result:
-                func = lookup_result[0].llvm_obj
-                for arg in self.args:
-                    arg_value = arg.codegen(symbol_table, False)
-                    if isinstance(arg.type, StringT) and isinstance(arg_value, ir.GlobalVariable):
-                        arg_value = ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, arg_value, [const_zero])
-                    args.append(arg_value)
-                    if isinstance(arg, Array):
-                        if arg.type.is_function_param:
-                            arg_symbol = arg.symbol()
-                            len_val = None
-                            if isinstance(arg, Array):
-                                len_val = symbol_table.lookup(Symbol(Varname(pe.Position(), f"{arg_symbol.name.name}.len.1", IntegerT()), IntegerT()))
-                            elif isinstance(arg, ArrayIndex):
-                                lookup_result = symbol_table.lookup(arg_symbol)
-                                idx = len(lookup_result.type.size) - len(arg_symbol.type.size) + 1
-                                len_val = symbol_table.lookup(Symbol(Varname(pe.Position(), f"{arg_symbol.name.name}.len.{idx}", IntegerT()),IntegerT()))
-                            args.append(symbol_table.llvm.builder.load(len_val.llvm_obj))
-                        else:
-                            for sz in arg.size:
-                                args.append(ir.Constant(ir.IntType(32), sz))
-            else:
-                """ Casting types somehow """
-                found_symb = None
-                for symb in name_lookup_result:
-                    if self.symbol().type.castable_to(symb.type):
-                        found_symb = symb
-                        func = symb.llvm_obj
-                        break
-                for call_arg_type, func_arg_type, call_arg in zip(self.symbol().type.argsT, found_symb.type.argsT, self.args):
-                    arg = call_arg.codegen(symbol_table, False)
-                    if call_arg_type != func_arg_type:
-                        arg = call_arg_type.cast_to(func_arg_type, symbol_table.llvm.builder)(arg)
-                    if isinstance(call_arg.type, StringT) and isinstance(arg, ir.GlobalVariable):
-                        arg = ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, arg, [const_zero])
-                    args.append(arg)
-                    if isinstance(call_arg, Array):
-                        if call_arg.type.is_function_param:
-                            arg_symbol = call_arg.symbol()
-                            len_val = None
-                            if isinstance(call_arg, Array):
-                                len_val = symbol_table.lookup(Symbol(Varname(pe.Position(), f"{arg_symbol.name.name}.len.1", IntegerT()), IntegerT()))
-                            elif isinstance(call_arg, ArrayIndex):
-                                lookup_result = symbol_table.lookup(arg_symbol)
-                                idx = len(lookup_result.type.size) - len(arg_symbol.type.size) + 1
-                                len_val = symbol_table.lookup(Symbol(Varname(pe.Position(), f"{arg_symbol.name.name}.len.{idx}", IntegerT()),IntegerT()))
-                            args.append(symbol_table.llvm.builder.load(len_val.llvm_obj))
-                        else:
-                            for sz in call_arg.size:
-                                args.append(ir.Constant(ir.IntType(32), sz))
-            if isinstance(func, ir.Function):
-                name = "call"
-                if func.ftype.return_type == ir.VoidType():
-                    name = ""
-                return symbol_table.llvm.builder.call(func, args, name)
-
-
 @dataclass
 class ArrayIndex:
     pos: pe.Position
@@ -609,46 +252,6 @@ class ArrayIndex:
     @pe.ExAction
     def create(attrs, coords, res_coord):
         pass
-
-    def symbol(self):
-        return Symbol(self.name, self.name.type)
-
-    def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
-        lookup_result = symbol_table.lookup(Symbol(self.name, self.name.type), by_type=False, by_origin=False)
-        if isinstance(lookup_result.llvm_obj, (ir.AllocaInstr, ir.GlobalVariable)):
-            const_zero = ir.Constant(ir.IntType(32), 0)
-            const_one = ir.Constant(ir.IntType(32), 1)
-            indices = []
-            for arg in self.args:
-                idx = arg.codegen(symbol_table, False)
-                idx = arg.type.sub(symbol_table.llvm.builder, "idx_sub")(idx, const_one)
-                indices.append(idx)
-            gep_idx = None
-            if lookup_result.type.is_function_param:
-                gep_idx = ArrayIndex.get_func_ptr(symbol_table.llvm.builder, lookup_result.llvm_obj, indices)
-            else:
-                gep_idx = ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, lookup_result.llvm_obj, indices)
-            if lvalue:
-                return gep_idx
-            else:
-                return symbol_table.llvm.builder.load(gep_idx, "gep_idx_load")
-        return None
-
-    @staticmethod
-    def get_func_ptr(builder: ir.IRBuilder, arr_alloca: ir.AllocaInstr, indices: list):
-        gep_idx = arr_alloca
-        for idx in indices:
-            gep_load = builder.load(gep_idx, "gep_load")
-            gep_idx = builder.gep(gep_load, [idx], True, "gep_idx")
-        return gep_idx
-
-    @staticmethod
-    def get_arr_ptr(builder: ir.IRBuilder, arr_alloca: ir.AllocaInstr | ir.GlobalVariable, indices: list):
-        const_zero = ir.Constant(ir.IntType(32), 0)
-        gep_idx = arr_alloca
-        for idx in indices:
-            gep_idx = builder.gep(gep_idx, [const_zero, idx], True, "gep_idx")
-        return gep_idx
 
 
 @dataclass
@@ -675,16 +278,6 @@ class ExitFor(ExitStatement):
         cexit = coords[0]
         return ExitFor(cexit.start, var)
 
-    def codegen(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.ForLoopBlock, accumulate=True)
-        block = None
-        for blocks in lookup_result:
-            if blocks.block_obj.name == self.name.name:
-                block = blocks
-                break
-        symbol_table.llvm.builder.branch(block.llvm.obj)
-
-
 @dataclass
 class ExitWhile(ExitStatement):
 
@@ -693,12 +286,6 @@ class ExitWhile(ExitStatement):
     def create(attrs, coords, res_coord):
         cexit, cdo = coords
         return ExitWhile(cexit.start)
-
-    def codegen(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.WhileLoopBlock)
-        lookup_result.llvm.builder.branch(lookup_result.llvm.obj)
-
-
 
 @dataclass
 class ExitSubroutine(ExitStatement):
@@ -709,12 +296,6 @@ class ExitSubroutine(ExitStatement):
         cexit, csub = coords
         return ExitSubroutine(cexit.start)
 
-    def codegen(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.SubroutineBlock)
-        if isinstance(lookup_result.llvm.obj, ir.Function):
-            lookup_result.llvm.builder.branch(lookup_result.llvm.obj.basic_blocks[-1])
-
-
 @dataclass
 class ExitFunction(ExitStatement):
 
@@ -723,13 +304,6 @@ class ExitFunction(ExitStatement):
     def create(attrs, coords, res_coord):
         cexit, cfunc = coords
         return ExitFunction(cexit.start)
-
-    def codegen(self, symbol_table: SymbolTable):
-        lookup_result = symbol_table.lookup_block(SymbolTableBlockType.FunctionBlock)
-        if isinstance(lookup_result.llvm.obj, ir.Function):
-            lookup_result.llvm.builder.branch(lookup_result.llvm.obj.basic_blocks[-1])
-
-
 
 @dataclass
 class AssignStatement(Statement):
@@ -745,24 +319,6 @@ class AssignStatement(Statement):
             var = Variable(var.pos, var, var.type)
         cvar, ceq, cexpr = coords
         return AssignStatement(cvar.start, var, expr)
-
-    def codegen(self, symbol_table: SymbolTable):
-        const_zero = ir.Constant(ir.IntType(32), 0)
-        variable = self.variable.codegen(symbol_table, True)
-        expr_val = self.expr.codegen(symbol_table, False)
-        if isinstance(variable, (ir.AllocaInstr, ir.GlobalVariable, ir.GEPInstr)):
-            if isinstance(expr_val, ir.GlobalVariable) and isinstance(self.expr.type, StringT):
-                expr_val = ArrayIndex.get_arr_ptr(symbol_table.llvm.builder, expr_val, [const_zero])
-            if self.variable.type != self.expr.type:
-                expr_val = self.expr.type.cast_to(self.variable.type, symbol_table.llvm.builder)(expr_val)
-            if isinstance(self.variable.type, StringT) and isinstance(self.expr.type, StringT):
-                if not self.expr.type.is_const:
-                    str_copy_symbol = Program.string_copy_symbol()
-                    lookup_result = symbol_table.lookup(str_copy_symbol, by_type=False)
-                    if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
-                        expr_val = symbol_table.llvm.builder.call(lookup_result.llvm_obj, [expr_val],"str_copy_val")
-            symbol_table.llvm.builder.store(expr_val, variable)
-
 
 @dataclass
 class ForLoop(Statement):
@@ -785,69 +341,6 @@ class ForLoop(Statement):
         next_variable = Variable(next_varname.pos, next_varname, next_varname.type)
         return ForLoop(var, cvar.start, start, cstart, end, cend, body, next_variable, cnext_varname)
 
-    def codegen(self, symbol_table: SymbolTable):
-        start = self.codegen_start(symbol_table)
-        end = self.codegen_end(symbol_table)
-        if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
-            if isinstance(symbol_table.llvm.builder.function, ir.Function):
-                builder = symbol_table.llvm.builder
-                func = builder.function
-                idx_alloca = builder.alloca(self.variable.type.llvm_type(), 1)
-                builder.store(start, idx_alloca)
-                symbol_table.add(self.variable.symbol().assoc(idx_alloca))
-                idx = func.basic_blocks.index(symbol_table.llvm.builder.block) + 1
-                cond_block = func.insert_basic_block(idx,
-                                                name=label_suffix(builder.block.name, ".for.cond"))
-                cond_block_builder = ir.IRBuilder(cond_block)
-                body_block = func.insert_basic_block(idx + 1,
-                                                name=label_suffix(builder.block.name, ".for.body"))
-                body_block_builder = ir.IRBuilder(body_block)
-                inc_block = func.insert_basic_block(idx + 2,
-                                               name=label_suffix(builder.block.name, ".for.inc"))
-                inc_block_builder = ir.IRBuilder(inc_block)
-                end_block = func.insert_basic_block(idx + 3,
-                                               name=label_suffix(builder.block.name, ".for.end"))
-                for_table = symbol_table.new_local(SymbolTableBlockType.ForLoopBlock,
-                                                   block_obj=self.variable,
-                                                   llvm_entry=SymbolTableLLVMEntry(symbol_table.llvm.module,
-                                                                                   body_block_builder,
-                                                                                   end_block))
-                builder.branch(cond_block)
-                self.codegen_cond(cond_block_builder, idx_alloca, end, body_block, end_block)
-                self.codegen_inc(inc_block_builder, idx_alloca, cond_block)
-
-                for stmt in self.body:
-                    stmt.codegen(for_table)
-
-                if body_block_builder.block.terminator is None:
-                    body_block_builder.branch(inc_block)
-
-                builder.position_at_end(end_block)
-
-    def codegen_start(self, symbol_table: SymbolTable):
-        start = self.start.codegen(symbol_table)
-        if self.start.type != self.variable.type:
-            start = self.start.type.cast_to(self.variable.type, symbol_table.llvm.builder)(start)
-        return start
-
-    def codegen_end(self, symbol_table: SymbolTable):
-        end = self.end.codegen(symbol_table)
-        if self.end.type != self.variable.type:
-            end = self.end.type.cast_to(self.variable.type, symbol_table.llvm.builder)(end)
-        return end
-
-    def codegen_cond(self, builder: ir.IRBuilder, idx_alloca, end_value, body_block, end_block):
-        for_idx = builder.load(idx_alloca, "for.idx")
-        for_cond = builder.icmp_signed("<=", for_idx, end_value)
-        builder.cbranch(for_cond, body_block, end_block)
-
-    def codegen_inc(self, builder: ir.IRBuilder, idx_alloca, block):
-        inc_idx = builder.load(idx_alloca, "for.idx")
-        inc_add = builder.add(inc_idx, ir.Constant(self.variable.type.llvm_type(), 1))
-        builder.store(inc_add, idx_alloca)
-        builder.branch(block)
-
-
 @dataclass
 class WhileLoop(Statement):
     pos: pe.Position
@@ -859,52 +352,6 @@ class WhileLoop(Statement):
         self.body = body
         self.condition = condition
         self.type = loop_type
-
-    def codegen(self, symbol_table: SymbolTable):
-        if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
-            if isinstance(symbol_table.llvm.builder.function, ir.Function):
-                builder = symbol_table.llvm.builder
-                func = builder.function
-                idx = func.basic_blocks.index(symbol_table.llvm.builder.block) + 1
-
-                cond_block = func.insert_basic_block(idx,
-                                                name=label_suffix(builder.block.name, ".for.cond"))
-                cond_block_builder = ir.IRBuilder(cond_block)
-                body_block = func.insert_basic_block(idx + 1,
-                                                name=label_suffix(builder.block.name, ".for.body"))
-                body_block_builder = ir.IRBuilder(body_block)
-                end_block = func.insert_basic_block(idx + 2,
-                                               name=label_suffix(builder.block.name, ".for.end"))
-                while_table = symbol_table.new_local(SymbolTableBlockType.WhileLoopBlock,
-                                                     llvm_entry=SymbolTableLLVMEntry(symbol_table.llvm.module,
-                                                                                     body_block_builder,
-                                                                                     end_block))
-                if self.type == WhileType.PreWhile or self.type == WhileType.PreUntil:
-                    builder.branch(cond_block)
-                else:
-                    builder.branch(body_block)
-                self.codegen_cond(symbol_table, cond_block_builder, body_block, end_block)
-
-                for stmt in self.body:
-                    stmt.codegen(while_table)
-
-                if body_block_builder.block.terminator is None:
-                    body_block_builder.branch(cond_block)
-
-                builder.position_at_end(end_block)
-
-    def codegen_cond(self, symbol_table: SymbolTable, builder: ir.IRBuilder, body_block, end_block):
-        if self.condition:
-            buffer = symbol_table.llvm.builder
-            symbol_table.llvm.builder = builder
-            cond_val = self.condition.codegen(symbol_table)
-            symbol_table.llvm.builder = buffer
-            const_val = ir.Constant(self.condition.type.llvm_type(), 0)
-            op = "!=" if self.type == WhileType.PreWhile or self.type.PostWhile else "=="
-            while_cond = self.condition.type.cmp(op, builder, "while.cond")(cond_val, const_val)
-            builder.cbranch(while_cond, body_block, end_block)
-        else:
-            builder.branch(body_block)
 
     def __repr__(self):
         return f"While(type={self.type})"
@@ -924,81 +371,6 @@ class IfElseStatement(Statement):
         cif, ccond, cthen_kw, cthen_br, celse_stmt, cend_kw, cif_kw = coords
         return IfElseStatement(ccond.start, cond, then_branch, else_branch)
 
-    def codegen(self, symbol_table: SymbolTable):
-        if len(self.else_branch) == 0:
-            self.codegen_if_then(symbol_table)
-        else:
-            self.codegen_if_else(symbol_table)
-
-    def codegen_if_else(self, symbol_table: SymbolTable):
-        cond_val = self.condition.codegen(symbol_table)
-        if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
-            if isinstance(symbol_table.llvm.builder.function, ir.Function):
-                builder = symbol_table.llvm.builder
-                func = builder.function
-                idx = func.basic_blocks.index(symbol_table.llvm.builder.block) + 1
-
-                if_then_block = func.insert_basic_block(idx,
-                                                name=label_suffix(builder.block.name, ".if.then"))
-                if_then_block_builder = ir.IRBuilder(if_then_block)
-                if_else_block = func.insert_basic_block(idx + 1,
-                                                name=label_suffix(builder.block.name, ".if.else"))
-                if_else_block_builder = ir.IRBuilder(if_else_block)
-                end_block = func.insert_basic_block(idx + 2,
-                                               name=label_suffix(builder.block.name, ".if.end"))
-                if_then_table = symbol_table.new_local(SymbolTableBlockType.IfThenBlock,
-                                                       llvm_entry=SymbolTableLLVMEntry(symbol_table.llvm.module,
-                                                                                       if_then_block_builder,
-                                                                                       end_block))
-                if_else_table = symbol_table.new_local(SymbolTableBlockType.IfElseBlock,
-                                                       llvm_entry=SymbolTableLLVMEntry(symbol_table.llvm.module,
-                                                                                       if_else_block_builder,
-                                                                                       end_block))
-                const_val = ir.Constant(self.condition.type.llvm_type(), 0)
-                if_cond = self.condition.type.cmp("!=", builder, "if.cond")(cond_val, const_val)
-                builder.cbranch(if_cond, if_then_block, if_else_block)
-
-                for stmt in self.then_branch:
-                    stmt.codegen(if_then_table)
-                if if_then_block_builder.block.terminator is None:
-                    if_then_block_builder.branch(end_block)
-
-                for stmt in self.else_branch:
-                    stmt.codegen(if_else_table)
-                if if_else_block_builder.block.terminator is None:
-                    if_else_block_builder.branch(end_block)
-
-                builder.position_at_end(end_block)
-
-    def codegen_if_then(self, symbol_table: SymbolTable):
-        cond_val = self.condition.codegen(symbol_table)
-        if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
-            if isinstance(symbol_table.llvm.builder.function, ir.Function):
-                builder = symbol_table.llvm.builder
-                func = builder.function
-                idx = func.basic_blocks.index(symbol_table.llvm.builder.block) + 1
-                if_then_block = func.insert_basic_block(idx,
-                                                   name=label_suffix(builder.block.name, ".if.then"))
-                if_then_block_builder = ir.IRBuilder(if_then_block)
-                end_block = func.insert_basic_block(idx + 1,
-                                               name=label_suffix(builder.block.name, ".if.end"))
-                if_then_table = symbol_table.new_local(SymbolTableBlockType.IfThenBlock,
-                                                       llvm_entry=SymbolTableLLVMEntry(symbol_table.llvm.module,
-                                                                                       if_then_block_builder,
-                                                                                       end_block))
-
-                const_val = ir.Constant(self.condition.type.llvm_type(), 0)
-                if_cond = self.condition.type.cmp("!=", builder, "if.cond")(cond_val, const_val)
-                builder.cbranch(if_cond, if_then_block, end_block)
-
-                for stmt in self.then_branch:
-                    stmt.codegen(if_then_table)
-                if if_then_block_builder.block.terminator is None:
-                    if_then_block_builder.branch(end_block)
-
-                builder.position_at_end(end_block)
-
-
 @dataclass
 class ImplicitTypeCast(Expr):
     pos: pe.Position
@@ -1010,22 +382,14 @@ class UnaryOpExpr(Expr):
     pos: pe.Position
     op: str
     unary_expr: Expr
+    type: Type
 
     @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
         op, left = attrs
         cop, cleft = coords
-        return UnaryOpExpr(cop.start, op, left)
-
-    def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
-        expr_val = self.unary_expr.codegen(symbol_table, False)
-        if self.op == '-':
-            if isinstance(self.unary_expr.type, NumericT):
-                expr_val = self.unary_expr.type.neg(symbol_table.llvm.builder, "expr.val.neg")(expr_val)
-        return expr_val
-
-
+        return UnaryOpExpr(cop.start, op, left, Type())
 
 @dataclass
 class BinOpExpr(Expr):
@@ -1033,41 +397,14 @@ class BinOpExpr(Expr):
     left: Expr
     op: str
     right: Expr
+    type: Type
 
     @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
         left, op, right = attrs
         cleft, cop, cright = coords
-        return BinOpExpr(cleft.start, left, op, right)
-
-    def codegen(self, symbol_table: SymbolTable, lvalue: bool = True):
-        lhs_val = self.left.codegen(symbol_table, False)
-        rhs_val = self.right.codegen(symbol_table, False)
-        result_val = None
-        if self.type == StringT():
-            str_concat_symbol = Program.string_concat_symbol()
-            lookup_result = symbol_table.lookup(str_concat_symbol, by_type=False)
-            if isinstance(symbol_table.llvm.builder, ir.IRBuilder):
-                result_val = symbol_table.llvm.builder.call(lookup_result.llvm_obj, [lhs_val, rhs_val], "str_concat_val")
-        elif isinstance(self.left.type, NumericT) and isinstance(self.right.type, NumericT):
-            if self.op in ('>', '<', '>=', '<=', '=', '<>'):
-                result_val = self.type.cmp(self.op, symbol_table.llvm.builder, "bin_cmp_val")(lhs_val, rhs_val)
-            else:
-                if self.left.type != self.type:
-                    lhs_val = self.left.type.cast_to(self.type, symbol_table.llvm.builder)(lhs_val)
-                if self.right.type != self.type:
-                    rhs_val = self.right.type.cast_to(self.type, symbol_table.llvm.builder)(rhs_val)
-                if self.op == "+":
-                    result_val = self.type.add(symbol_table.llvm.builder, "bin_add_val")(lhs_val, rhs_val)
-                elif self.op == "-":
-                    result_val = self.type.sub(symbol_table.llvm.builder, "bin_sub_val")(lhs_val, rhs_val)
-                elif self.op == "*":
-                    result_val = self.type.mul(symbol_table.llvm.builder, "bin_mul_val")(lhs_val, rhs_val)
-                elif self.op == "/":
-                    result_val = self.type.div(symbol_table.llvm.builder, "bin_div_val")(lhs_val, rhs_val)
-        return result_val
-
+        return BinOpExpr(cleft.start, left, op, right, Type())
 
 @dataclass
 class Program:
@@ -1079,24 +416,3 @@ class Program:
         global_decls = attrs[0]
         program = Program(global_decls)
         return program
-
-    def codegen(self, module_name=None):
-        program_module = ir.Module(name=module_name if module_name else __file__)
-        program_module.triple = binding.get_default_triple()
-        program_module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8  :16:32:64-S128"
-        global_constr = GlobalConstructor(program_module, "variable_decl_constructor")
-        global_constr_sub = ir.Function(program_module, ir.FunctionType(ir.VoidType(), []), "variable_decl_constructor")
-        global_builder = ir.IRBuilder(global_constr_sub.append_basic_block("entry"))
-        global_builder.ret_void()
-        global_constr_symbol = Program.global_constructor_symbol().assoc(global_constr_sub)
-        self.symbol_table = SymbolTable(block_type=SymbolTableBlockType.GlobalBlock,
-                                        llvm_entry=SymbolTableLLVMEntry(program_module))
-        self.symbol_table.add(global_constr_symbol)
-
-        for decl in self.decls:
-            decl.codegen(self.symbol_table)
-        return program_module
-
-    @staticmethod
-    def global_constructor_symbol():
-        return Symbol(Varname(None, "variable_decl_constructor", VoidT()), ProcedureT(VoidT(), []))

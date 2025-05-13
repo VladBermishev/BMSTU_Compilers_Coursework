@@ -2,7 +2,7 @@ import pathlib
 from enum import Enum
 from src.parser.errors import RedefinitionError
 from src.libs.parser_edsl import Position
-
+import src.parser.basic_types as basic_types
 
 class STBlockType(Enum):
     Undefined = 0
@@ -47,6 +47,18 @@ def symbol_name_predicate(lhs: Symbol, rhs: Symbol):
 
 def symbol_type_name_predicate(lhs: Symbol, rhs: Symbol):
     return lhs.name == rhs.name and lhs.type == rhs.type
+
+def symbol_basic_name_predicate(lhs: Symbol, rhs: Symbol):
+    def __extract_type(tp: basic_types.Type):
+        match type(tp):
+            case t if t is basic_types.ProcedureT:
+                return __extract_type(tp.return_type)
+            case t if t is basic_types.ArrayT:
+                return __extract_type(tp.value_type)
+            case t if t is basic_types.PointerT:
+                return __extract_type(tp.type)
+        return tp
+    return lhs.name == rhs.name and __extract_type(lhs.type) == __extract_type(rhs.type)
 
 
 class STLookupStrategy:
@@ -128,6 +140,13 @@ class SymbolTable:
     """
     def unql(self, strategy: STLookupStrategy) -> STLookupResult:
         strategy.predicate = symbol_name_predicate
+        return self._lookup(strategy)
+
+    """
+        TBasic Name Lookup: search for exact match of tbasic-name
+    """
+    def bnl(self, strategy: STLookupStrategy) -> STLookupResult:
+        strategy.predicate = symbol_basic_name_predicate
         return self._lookup(strategy)
 
     def _lookup(self, strategy: STLookupStrategy) -> STLookupResult:
