@@ -487,5 +487,6 @@ class SRConstExpr:
     def transform(node: basic_ast.ConstExpr, st: SymbolTable):
         if isinstance(node.type, StringT):
             #TODO: if it'll stay, need to think about string literal names
-            return basic_ast.VariableReference(node.pos, basic_ast.Varname(node.pos, "str_1", node.type), PointerT(node.type))
+            # return basic_ast.VariableReference(node.pos, basic_ast.Varname(node.pos, "str_1", node.type), PointerT(node.type))
+            return basic_ast.ImplicitTypeCast(node.pos, PointerT(node.type), node)
         return node

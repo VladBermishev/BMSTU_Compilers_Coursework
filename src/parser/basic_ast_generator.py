@@ -45,14 +45,27 @@ class ConstExprICAGenerator:
         return node
 
 class FuncCallICAGenerator:
-
     @staticmethod
     def generate(node: FuncCall, implicit_type: Type) -> Expr | None:
+        if isinstance(implicit_type, ProcedureT):
+            return FuncCallICAGenerator.generate_args(node, implicit_type)
+        else:
+            return FuncCallICAGenerator.generate_expr(node, implicit_type)
+
+    @staticmethod
+    def generate_args(node: FuncCall, implicit_type: ProcedureT) -> Expr | None:
         result = node
         for idx, arg in enumerate(result.args):
             result.args[idx] = ImplicitCastAstGenerator.generate(arg, implicit_type)
             if result.args[idx] is None:
                 return None
+        return FuncCallICAGenerator.generate_expr(result, implicit_type.return_type)
+
+    @staticmethod
+    def generate_expr(node: FuncCall, implicit_type: Type) -> Expr | None:
+        result = node
+        if implicit_type != result.type:
+            result = ImplicitTypeCast(result.pos, implicit_type, node)
         return result
 
 class VariableDeclICAGenerator:

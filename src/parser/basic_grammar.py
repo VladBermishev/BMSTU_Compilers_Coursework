@@ -142,13 +142,15 @@ NForLoop |= KW_FOR, NVarname, "=", NExpr, KW_TO, NExpr, NStatements, KW_NEXT, NV
 
 NWhileLoop |= KW_DO, NPreOrPostLoop
 
-NPreOrPostLoop |= KW_WHILE, NPreLoop, lambda expr_and_stmts: WhileLoop(expr_and_stmts[1], expr_and_stmts[0], WhileType.PreWhile)
-NPreOrPostLoop |= KW_UNTIL, NPreLoop, lambda expr_and_stmts: WhileLoop(expr_and_stmts[1], expr_and_stmts[0], WhileType.PreUntil)
+#NPreOrPostLoop |= KW_WHILE, NPreLoop, lambda expr_and_stmts: WhileLoop(expr_and_stmts[1], expr_and_stmts[0], WhileType.PreWhile)
+NPreOrPostLoop |= KW_WHILE, NPreLoop, WhileLoop.create_pre_while
+#NPreOrPostLoop |= KW_UNTIL, NPreLoop, lambda expr_and_stmts: WhileLoop(expr_and_stmts[1], expr_and_stmts[0], WhileType.PreUntil)
+NPreOrPostLoop |= KW_UNTIL, NPreLoop, WhileLoop.create_pre_until
 NPreOrPostLoop |= NPostLoop
 
 NPreLoop |= NExpr, NStatements, KW_LOOP, lambda expr, stmts: (expr, stmts)
 
-NPostLoop |= NStatements, KW_LOOP, NPostLoopExpr, lambda stmts, type_and_expr: WhileLoop(stmts, type_and_expr[1], type_and_expr[0])
+NPostLoop |= NStatements, KW_LOOP, NPostLoopExpr, WhileLoop.digest
 
 NPostLoopExpr |= KW_WHILE, NExpr, lambda expr: (WhileType.PostWhile, expr)
 

@@ -3,6 +3,8 @@ import logging
 import argparse
 from pathlib import Path
 from pprint import pprint
+
+from src.formatter.ast_formatter import AstTreeFormatter
 from src.parser.transforms.semantic_relax_transform import SemanticRelaxTransform
 from src.preprocessor.preprocessor import Preprocessor
 from src.std_library import StandardLibrary
@@ -47,6 +49,7 @@ if __name__ == '__main__':
         source_ast, source_st = SemanticRelaxTransform.transform(source_ast, standart_library=std_lib_ast)
         if args.constant_folding:
             source_ast = ConstantFoldingTransform.transform(source_ast)
-        pprint(source_ast)
+        if args.ast_dump:
+            AstTreeFormatter.print(source_ast)
     except pe.Error as e:
         logger.error(f'{file_path}: Error: {e.pos}: {e.message}')

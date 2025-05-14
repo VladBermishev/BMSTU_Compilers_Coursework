@@ -226,7 +226,7 @@ class PrintCall:
         return PrintCall(cprint.start, args)
 
 @dataclass
-class FuncCall:
+class FuncCall(Expr):
     pos: pe.Position
     name: Varname
     args: list[Expr]
@@ -242,7 +242,7 @@ class FuncCall:
         return FuncCall(cfunc.start, func_name, args, func_name.type)
 
 @dataclass
-class ArrayIndex:
+class ArrayIndex(Expr):
     pos: pe.Position
     name: Varname
     args: list[Expr]
@@ -322,6 +322,7 @@ class AssignStatement(Statement):
 
 @dataclass
 class ForLoop(Statement):
+    pos: pe.Position
     variable: Variable
     cond_coord: pe.Position
     start: Expr
@@ -339,7 +340,7 @@ class ForLoop(Statement):
         cfor_kw, cvar, cass, cstart, cto_kw, cend, cstmts, ckw_next, cnext_varname = coords
         var = Variable(varname.pos, varname, varname.type)
         next_variable = Variable(next_varname.pos, next_varname, next_varname.type)
-        return ForLoop(var, cvar.start, start, cstart, end, cend, body, next_variable, cnext_varname)
+        return ForLoop(cfor_kw.start, var, cvar.start, start, cstart, end, cend, body, next_variable, cnext_varname)
 
 @dataclass
 class WhileLoop(Statement):
@@ -348,10 +349,27 @@ class WhileLoop(Statement):
     body: list[Statement]
     type: WhileType
 
-    def __init__(self, body, condition, loop_type):
-        self.body = body
-        self.condition = condition
-        self.type = loop_type
+    @staticmethod
+    @pe.ExAction
+    def create_pre_while(attrs, coords, res_coord):
+        cond, body = attrs[0]
+        cwhile_kw, cloop = coords
+        return WhileLoop(cwhile_kw.start, cond, body, WhileType.PreWhile)
+
+    @staticmethod
+    @pe.ExAction
+    def create_pre_until(attrs, coords, res_coord):
+        cond, body = attrs[0]
+        cwhile_kw, cloop = coords
+        return WhileLoop(cwhile_kw.start, cond, body, WhileType.PreUntil)
+
+    @staticmethod
+    @pe.ExAction
+    def digest(attrs, coords, res_coord):
+        body = attrs[0]
+        loop_type, cond = attrs[1]
+        cdo_kw, ccond, cthen_kw = coords
+        return WhileLoop(cdo_kw.start, cond, body, loop_type)
 
     def __repr__(self):
         return f"While(type={self.type})"
