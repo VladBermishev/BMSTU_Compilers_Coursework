@@ -1,0 +1,3 @@
+[submodule "tools/compiler-explorer"]
+	path = tools/compiler-explorer
+	url = https://github.com/compiler-explorer/compiler-explorer.git

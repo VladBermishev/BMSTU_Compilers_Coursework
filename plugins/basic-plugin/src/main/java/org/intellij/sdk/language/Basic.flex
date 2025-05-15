@@ -46,6 +46,7 @@ COMMENT=\'[^\r\n]*
     "!" { yybegin(YYINITIAL); return BasicTypes.FLOAT_TYPE; }
     "#" { yybegin(YYINITIAL); return BasicTypes.DOUBLE_TYPE; }
     "$" { yybegin(YYINITIAL); return BasicTypes.STRING_TYPE; }
+    "@" { yybegin(YYINITIAL); return BasicTypes.AUTO_TYPE; }
     "if" { yybegin(YYINITIAL); return BasicTypes.IF; }
     "then" { yybegin(YYINITIAL); return BasicTypes.THEN;}
     "else" { yybegin(YYINITIAL); return BasicTypes.ELSE;}

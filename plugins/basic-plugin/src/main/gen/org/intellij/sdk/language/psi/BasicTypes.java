@@ -57,6 +57,7 @@ public interface BasicTypes {
   IElementType VARNAME_OR_ARRAY_PARAM = new BasicElementType("VARNAME_OR_ARRAY_PARAM");
   IElementType WHILE_LOOP = new BasicElementType("WHILE_LOOP");
 
+  IElementType AUTO_TYPE = new BasicTokenType("AUTO_TYPE");
   IElementType COMMA = new BasicTokenType("COMMA");
   IElementType COMMENT = new BasicTokenType("COMMENT");
   IElementType DECLARE = new BasicTokenType("DECLARE");

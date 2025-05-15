@@ -993,7 +993,7 @@ public class BasicParser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // INT_TYPE | LONG_TYPE | FLOAT_TYPE | DOUBLE_TYPE | STRING_TYPE
+  // INT_TYPE | LONG_TYPE | FLOAT_TYPE | DOUBLE_TYPE | STRING_TYPE | AUTO_TYPE
   public static boolean Type(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "Type")) return false;
     boolean r;
@@ -1003,6 +1003,7 @@ public class BasicParser implements PsiParser, LightPsiParser {
     if (!r) r = consumeToken(b, FLOAT_TYPE);
     if (!r) r = consumeToken(b, DOUBLE_TYPE);
     if (!r) r = consumeToken(b, STRING_TYPE);
+    if (!r) r = consumeToken(b, AUTO_TYPE);
     exit_section_(b, l, m, r, false, null);
     return r;
   }
