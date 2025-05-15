@@ -1,0 +1,64 @@
+{
+  parserClass="org.intellij.sdk.language.parser.BasicParser"
+
+  extends="com.intellij.extapi.psi.ASTWrapperPsiElement"
+
+  psiClassPrefix="Basic"
+  psiImplClassSuffix="Impl"
+  psiPackage="org.intellij.sdk.language.psi"
+  psiImplPackage="org.intellij.sdk.language.psi.impl"
+
+  elementTypeHolderClass="org.intellij.sdk.language.psi.BasicTypes"
+  elementTypeClass="org.intellij.sdk.language.psi.BasicElementType"
+  tokenTypeClass="org.intellij.sdk.language.psi.BasicTokenType"
+}
+
+Program ::= (GlobalSymbol|COMMENT)*
+GlobalSymbol ::= SubroutineDecl | SubroutineDef | FunctionDecl | FunctionDef | VariableDecl | PreprocessorCommand
+SubroutineProto ::= SUB IDENTIFIER LBRACKET ParametersList RBRACKET
+FunctionProto ::= FUNCTION Varname LBRACKET ParametersList RBRACKET
+SubroutineDef ::= SubroutineProto Statements END SUB
+FunctionDef ::= FunctionProto Statements END FUNCTION
+SubroutineDecl ::= DECLARE SubroutineProto
+FunctionDecl ::= DECLARE FunctionProto
+VariableDecl ::= DIM VarnameOrArrayArg VariableInit
+PreprocessorCommand ::= IncludeCommand | PragmaCommand
+IncludeCommand ::= PRAGMA IDENTIFIER
+PragmaCommand ::= (INCLUDE INCLUDE_PATH) | (INCLUDE STRING_CONST)
+VariableInit ::= (EQ Expr | EQ InitializerList)?
+InitializerList ::= LCBRACKET InitializerListValues RCBRACKET
+InitializerListValues ::= InitializerListValue (COMMA InitializerListValues)?
+InitializerListValue ::= Expr | InitializerList
+ParametersList ::= (VarnameOrArrayParam (COMMA NonEmptyParametersList)? )?
+NonEmptyParametersList ::= VarnameOrArrayParam (NonEmptyParametersList)?
+VarnameOrArrayParam ::= Varname (LBRACKET CommaList RBRACKET)?
+CommaList ::= (COMMA CommaList)?
+ArgumentsList ::= (Expr (COMMA NonEmptyArgumentsList)?)?
+NonEmptyArgumentsList ::= Expr (COMMA NonEmptyArgumentsList)?
+VarnameOrArrayArg ::= Varname (LBRACKET (NonEmptyArgumentsList | CommaList) RBRACKET)?
+FuncCallOrArrayIndex ::= IDENTIFIER LBRACKET ArgumentsList RBRACKET | Varname LBRACKET ArgumentsList RBRACKET
+FuncCall ::= PRINT NonEmptyArgumentsList
+Varname ::= IDENTIFIER Type
+Type ::= INT_TYPE | LONG_TYPE | FLOAT_TYPE | DOUBLE_TYPE | STRING_TYPE
+Statements ::= ((Statement NonEmptyStatements) | ExitStatement | Statement)?
+NonEmptyStatements ::= (Statement NonEmptyStatements?) | ExitStatement
+Statement ::= VariableDecl | AssignStatement | FuncCallOrArrayIndex | FuncCall | LoopStmt | IfStatement
+AssignStatement ::= (Varname EQ Expr) | (FuncCallOrArrayIndex EQ Expr)
+IfStatement ::= IF Expr THEN Statements ElseStatement END IF
+ExitStatement ::= EXIT FOR | EXIT FOR Varname | EXIT DO | EXIT LOOP | EXIT SUB | EXIT FUNCTION
+ElseStatement ::= (ELSE Statements)?
+LoopStmt ::= ForLoop | WhileLoop
+ForLoop ::= FOR Varname EQ Expr TO Expr Statements NEXT Varname
+WhileLoop ::= DO PreOrPostLoop
+PreOrPostLoop ::= WHILE PreLoop | UNTIL PreLoop | PostLoop
+PreLoop ::= Expr Statements LOOP
+PostLoop ::= Statements LOOP PostLoopExpr
+PostLoopExpr ::= (WHILE Expr | UNTIL Expr)?
+Expr ::= ArithmExpr (CmpOp ArithmExpr)?
+CmpOp ::=  GT | LT | GE | LE | EQ | NE
+ArithmExpr ::= Term (AddOp ArithmExpr)? | AddOp Term
+AddOp ::= PLUS | MINUS
+MultOp ::= MULT | DIV
+Term ::= Power (MultOp Term)?
+Power ::= FuncCallOrArrayIndex | Const | LBRACKET Expr RBRACKET | Varname
+Const ::= INT_CONST | REAL_CONST | STRING_CONST

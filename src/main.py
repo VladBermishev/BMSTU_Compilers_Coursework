@@ -2,12 +2,11 @@ import sys
 import logging
 import argparse
 from pathlib import Path
-from pprint import pprint
 
 from src.formatter.ast_formatter import AstTreeFormatter
 from src.parser.transforms.semantic_relax_transform import SemanticRelaxTransform
 from src.preprocessor.preprocessor import Preprocessor
-from src.std_library import StandardLibrary
+from src.std_library.std_library import StandardLibrary
 from src.parser import basic_grammar
 from src.libs import parser_edsl as pe
 from src.optimizer.transforms.constant_folding import ConstantFoldingTransform
