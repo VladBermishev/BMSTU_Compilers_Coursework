@@ -9,7 +9,7 @@ SUB FUNCTION END DECLARE DIM PRINT
 IF THEN ELSE
 FOR TO NEXT EXIT
 DO LOOP WHILE UNTIL 
-">" "<" ">=" "<=" "=" "<>" "+" "-"
+">" "<" ">=" "<=" "=" "<>" "+" "-" "*" "/"
 
 <Program> ::= <GlobalSymbols>
 <GlobalSymbols> ::= <GlobalSymbol> <GlobalSymbols> | eps

@@ -24,6 +24,7 @@ IDENT=[A-Za-z_][A-Za-z0-9_]*
 WHITE_SPACE=[\ \n\t\f]
 COMMENT=\'[^\r\n]*
 
+%states INCLUDE
 %%
 <YYINITIAL> {
     "," { yybegin(YYINITIAL); return BasicTypes.COMMA; }
@@ -63,15 +64,18 @@ COMMENT=\'[^\r\n]*
     "end" { yybegin(YYINITIAL); return BasicTypes.END;}
     "dim" { yybegin(YYINITIAL); return BasicTypes.DIM;}
     "print" { yybegin(YYINITIAL); return BasicTypes.PRINT;}
-    "#include" { yybegin(YYINITIAL); return BasicTypes.INCLUDE;}
+    "#include" { yybegin(INCLUDE); return BasicTypes.INCLUDE;}
     "#pragma" { yybegin(YYINITIAL); return BasicTypes.PRAGMA;}
     {INT_CONST} { yybegin(YYINITIAL); return BasicTypes.INT_CONST;}
     {FLOAT_CONST} { yybegin(YYINITIAL); return BasicTypes.REAL_CONST;}
     {STRING_CONST} { yybegin(YYINITIAL); return BasicTypes.STRING_CONST;}
     {IDENT} { yybegin(YYINITIAL); return BasicTypes.IDENTIFIER;}
     {COMMENT} { yybegin(YYINITIAL); return BasicTypes.COMMENT; }
-    {INCLUDE_PATH} { yybegin(YYINITIAL); return BasicTypes.INCLUDE_PATH; }
     ({CRLF}|{WHITE_SPACE})+ { yybegin(YYINITIAL); return TokenType.WHITE_SPACE; }
+}
+<INCLUDE>{
+    {INCLUDE_PATH} { yybegin(YYINITIAL); return BasicTypes.INCLUDE_PATH; }
+    ({CRLF}|{WHITE_SPACE})+ { yybegin(INCLUDE); return TokenType.WHITE_SPACE; }
 }
 
 [^] { return TokenType.BAD_CHARACTER; }

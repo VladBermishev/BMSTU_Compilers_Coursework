@@ -1,5 +1,7 @@
 from src.parser import basic_ast
 from src.parser import basic_types
+from src.parser.basic_types import PointerT
+
 
 class Transform:
     @staticmethod
@@ -96,6 +98,11 @@ class CFBinaryExpr:
         if isinstance(result.left, basic_ast.ConstExpr) and isinstance(result.right, basic_ast.ConstExpr):
             if result.left.type == basic_types.StringT() and result.right.type == basic_types.StringT() and result.op == '+':
                 result = basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT())
+            elif (result.left.type == basic_types.PointerT(basic_types.StringT()) and
+                  result.right.type == basic_types.PointerT(basic_types.StringT())):
+                if result.left.type.type == basic_types.StringT() and result.right.type.type == basic_types.StringT() and result.op == '+':
+                    concated_string = basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT())
+                    result = basic_ast.ImplicitTypeCast(result.pos, basic_types.PointerT(basic_types.StringT()), concated_string)
             elif isinstance(result.left.type, basic_types.NumericT) and isinstance(result.right.type, basic_types.NumericT):
                 match result.op:
                     case op if op in ('>', '<', '>=', '<=', '=', '<>'):
