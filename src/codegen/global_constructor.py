@@ -26,8 +26,7 @@ class OpaquePointerType(ir.PointerType):
 
     def __eq__(self, other):
         if isinstance(other, ir.PointerType):
-            return (self.pointee, self.addrspace) == (other.pointee,
-                                                      other.addrspace)
+            return (self.pointee, self.addrspace) == (other.pointee, other.addrspace)
         else:
             return False
 

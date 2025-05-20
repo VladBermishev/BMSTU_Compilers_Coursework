@@ -2,5 +2,11 @@
 ## [Grammar](https://github.com/VladBermishev/BMSTU_Compilers_Coursework/blob/master/doc/grammar.bnf)
 
 ### TODO
-- CF ImplicitTypeCast bug
-- Godbolt integration
+- Rebuild plugin
+- HIR blocks, named_values, constants
+- HIR transform
+- HIR parser?
+- HIR formatter
+- HIR to LLVM
+- Godbolt integration (HIR)
+- Optimizations
