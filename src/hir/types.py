@@ -58,3 +58,7 @@ class StructType(Type):
 
     def __str__(self):
         return f"{{{', '.join(map(str, self.elements))}}}"
+
+class LabelType(Type):
+    def __str__(self):
+        return "label"
