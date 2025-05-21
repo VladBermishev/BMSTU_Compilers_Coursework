@@ -3,10 +3,11 @@
 
 ### TODO
 - Rebuild plugin
-- HIR blocks, named_values, constants
-- HIR transform
-- HIR parser?
-- HIR formatter
+- ### HIR
+- blocks, named_values, constants
+- transform
+- parser?
+- formatter
 - HIR to LLVM
-- Godbolt integration (HIR)
-- Optimizations
+- Godbolt integration
+- ### Optimizations

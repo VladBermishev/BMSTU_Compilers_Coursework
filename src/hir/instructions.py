@@ -2,8 +2,8 @@ import src.hir.types as hir_types
 import src.hir.values as hir_values
 
 class Instruction(hir_values.NamedValue):
-    def __init__(self, optype: hir_types.Type, opname, operands, name=""):
-        super(Instruction, self).__init__(optype, name)
+    def __init__(self, parent, optype: hir_types.Type, opname, operands, name=""):
+        super(Instruction, self).__init__(parent, optype, name)
         self.optype = optype
         self.opname = opname
         self.operands = operands
@@ -12,44 +12,44 @@ class Instruction(hir_values.NamedValue):
         return f"{self.opname} {self.optype} {', '.join(map(str, self.operands))}\n"
 
 class CallInstruction(Instruction):
-    def __init__(self, func, args, name=""):
-        super(CallInstruction, self).__init__(func.function_type.return_type, "call", [func] + list(args), name=name)
+    def __init__(self, parent, func, args, name=""):
+        super(CallInstruction, self).__init__(parent, func.function_type.return_type, "call", [func] + list(args), name=name)
 
 class Terminator(Instruction):
-    def __init__(self, opname, operands):
-        super(Terminator, self).__init__(hir_types.VoidType(), opname, operands)
+    def __init__(self, parent, opname, operands):
+        super(Terminator, self).__init__(parent, hir_types.VoidType(), opname, operands)
 
     def __str__(self):
         operands = ', '.join(["{0} {1}".format(op.type, op.get_reference()) for op in self.operands])
         return f"{self.opname} {operands}"
 
 class ReturnInstruction(Terminator):
-    def __init__(self, opname, return_value=None):
+    def __init__(self, parent, opname, return_value=None):
         operands = [return_value] if return_value is not None else []
-        super(ReturnInstruction, self).__init__(opname, operands)
+        super(ReturnInstruction, self).__init__(parent, opname, operands)
 
 class BranchInstruction(Terminator):
-    def __init__(self, label):
-        super(Terminator, self).__init__(hir_types.VoidType(), "br", [label])
+    def __init__(self, parent, label):
+        super(Terminator, self).__init__(parent, hir_types.VoidType(), "br", [label])
 
 class ConditionalBranchInstruction(Terminator):
-    def __init__(self, cond, lhs, rhs):
-        super(Terminator, self).__init__(hir_types.VoidType(), "br", [cond, lhs, rhs])
+    def __init__(self, parent, cond, lhs, rhs):
+        super(Terminator, self).__init__(parent, hir_types.VoidType(), "br", [cond, lhs, rhs])
 
 class SelectInstruction(Instruction):
-    def __init__(self, cond, lhs, rhs, name=""):
-        super(SelectInstruction, self).__init__(lhs.type, "select", [cond, lhs, rhs], name=name)
+    def __init__(self, parent, cond, lhs, rhs, name=""):
+        super(SelectInstruction, self).__init__(parent, lhs.type, "select", [cond, lhs, rhs], name=name)
 
 class CompareInstruction(Instruction):
     # Define the following in subclasses
     OPNAME = 'invalid-compare'
     VALID_OP = {}
 
-    def __init__(self, op, lhs, rhs, name=''):
+    def __init__(self, parent, op, lhs, rhs, name=''):
         if op not in self.VALID_OP:
             raise ValueError("invalid comparison %r for %s" % (op, self.OPNAME))
         opname = self.OPNAME
-        super(CompareInstruction, self).__init__(hir_types.BoolType(), opname, [lhs, rhs], name=name)
+        super(CompareInstruction, self).__init__(parent, hir_types.BoolType(), opname, [lhs, rhs], name=name)
         self.op = op
 
     def __str__(self):
@@ -97,34 +97,34 @@ class FloatCompareInstruction(CompareInstruction):
         'true': 'no comparison, always returns true',
     }
 
-class CastInstr(Instruction):
-    def __init__(self, op, val, typ, name):
-        super(CastInstr, self).__init__(typ, op, [val], name=name)
+class CastInstruction(Instruction):
+    def __init__(self, parent, op, val, typ, name):
+        super(CastInstruction, self).__init__(parent, typ, op, [val], name=name)
 
 class LoadInstruction(Instruction):
-    def __init__(self, ptr, load_type, name):
-        super(LoadInstruction, self).__init__(load_type, "load", [ptr], name=name)
+    def __init__(self, parent, ptr, load_type, name):
+        super(LoadInstruction, self).__init__(parent, load_type, "load", [ptr], name=name)
 
 class StoreInstruction(Instruction):
-    def __init__(self, value, ptr):
-        super(StoreInstruction, self).__init__(hir_types.VoidType(), "store", [value, ptr])
+    def __init__(self, parent, value, ptr):
+        super(StoreInstruction, self).__init__(parent, hir_types.VoidType(), "store", [value, ptr])
 
 class AllocateInstruction(Instruction):
-    def __init__(self, typ, count, name):
+    def __init__(self, parent, typ, count, name):
         operands = [count] if count else ()
-        super(AllocateInstruction, self).__init__(hir_types.PointerType(), "alloca", operands, name)
+        super(AllocateInstruction, self).__init__(parent, hir_types.PointerType(), "alloca", operands, name)
         self.allocated_type = typ
         self.align = None
 
 class GEPInstruction(Instruction):
-    def __init__(self, type, ptr, indices, name):
-        super(GEPInstruction, self).__init__(type, "getelementptr", [ptr] + list(indices), name=name)
+    def __init__(self, parent, type, ptr, indices, name):
+        super(GEPInstruction, self).__init__(parent, type, "getelementptr", [ptr] + list(indices), name=name)
         self.pointer = ptr
         self.indices = indices
 
-class PhiInstr(Instruction):
-    def __init__(self, typ, name):
-        super(PhiInstr, self).__init__(typ, "phi", (), name=name)
+class PhiInstruction(Instruction):
+    def __init__(self, parent, typ, name):
+        super(PhiInstruction, self).__init__(parent, typ, "phi", (), name=name)
         self.incomings = []
 
     def add_incoming(self, value, block):

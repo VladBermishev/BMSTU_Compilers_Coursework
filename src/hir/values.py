@@ -5,16 +5,22 @@ class Value(ABC):
     pass
 
 class NamedValue(Value):
+    name_prefix = '%'
+    deduplicate_name = True
+
     def __init__(self, parent, type: hir_types.Type, name):
         self.parent = parent
         self.type = type
         self.name = name
 
 class ConstantValue(Value):
-    pass
+    def __init__(self, type: hir_types.Type, value):
+        self.type = type
+        self.value = value
 
 class GlobalValue(NamedValue):
-    pass
+    name_prefix = '@'
+    deduplicate_name = False
 
 class GlobalVariable(GlobalValue):
     def __init__(self, module, type: hir_types.Type, name, init_value=None):
@@ -22,7 +28,8 @@ class GlobalVariable(GlobalValue):
         self.init_value = init_value
 
 class Argument(NamedValue):
-    pass
+    def __init__(self, parent, type: hir_types.Type, name=""):
+        super(Argument, self).__init__(parent, type, name)
 
 class ReturnValue(NamedValue):
     pass
@@ -34,7 +41,7 @@ class Function(GlobalValue):
         self.scope = _utils.NameScope()
         self.blocks = []
         self.args = tuple([Argument(self, t) for t in ftype.args])
-        self.return_value = ReturnValue(self, ftype.return_type)
+        self.return_value = ReturnValue(self, ftype.return_type, name)
 
 class Block(NamedValue):
     def __init__(self, parent, name=""):
