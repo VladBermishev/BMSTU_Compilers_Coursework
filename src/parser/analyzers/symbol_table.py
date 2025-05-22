@@ -143,7 +143,7 @@ class SymbolTable:
         return self._lookup(strategy)
 
     """
-        TBasic Name Lookup: search for exact match of tbasic-name
+        TBasic Name Lookup: search for exact match of tbasic-name = {ident, type}
     """
     def bnl(self, strategy: STLookupStrategy) -> STLookupResult:
         strategy.predicate = symbol_basic_name_predicate

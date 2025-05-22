@@ -172,7 +172,7 @@ class SRVariableDecl:
     def transform(node: basic_ast.VariableDecl, st: SymbolTable):
         result = node
         symbol = SymbolFactory.create(node.variable)
-        if st is not None and not (lookup_result := st.qnl(STLookupStrategy(symbol, STLookupScope.Local))).empty():
+        if st is not None and not (lookup_result := st.bnl(STLookupStrategy(symbol, STLookupScope.Local))).empty():
             raise RedefinitionError(node.pos, node.variable.name, lookup_result.first().name.pos)
         if node.init_value is not None:
             return SRVariableDecl.__transfrom_init_value(node, st)

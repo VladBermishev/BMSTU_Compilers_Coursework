@@ -11,7 +11,8 @@ class NamedValue(Value):
     def __init__(self, parent, type: hir_types.Type, name):
         self.parent = parent
         self.type = type
-        self.name = name
+        self.name = self.parent.scope.register(name) if self.deduplicate_name else name
+
 
 class ConstantValue(Value):
     def __init__(self, type: hir_types.Type, value):
@@ -35,13 +36,14 @@ class ReturnValue(NamedValue):
     pass
 
 class Function(GlobalValue):
-    def __init__(self, module, ftype: hir_types.FunctionType, name):
+    def __init__(self, module, ftype: hir_types.FunctionType, name, arg_names=None):
         super(Function, self).__init__(module, hir_types.PointerType(), name=name)
         self.ftype = ftype
-        self.scope = _utils.NameScope()
+        self.scope = module.scope.child()
         self.blocks = []
-        self.args = tuple([Argument(self, t) for t in ftype.args])
-        self.return_value = ReturnValue(self, ftype.return_type, name)
+        arg_names = arg_names or ["" for _ in ftype.args]
+        self.args = tuple([Argument(self, tp, name) for tp, name in zip(ftype.args,arg_names)])
+        self.return_value = ReturnValue(self, ftype.return_type, self.name)
 
 class Block(NamedValue):
     def __init__(self, parent, name=""):

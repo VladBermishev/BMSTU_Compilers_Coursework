@@ -16,11 +16,11 @@ class SymbolFactory:
                 return Symbol(node.name.name, node.type, node.pos)
             case t if t is FunctionDecl:
                 result = SymbolFactory.create(node.proto)
-                result.external = True
+                result.declaration = True
                 return result
             case t if t is SubroutineDecl:
                 result = SymbolFactory.create(node.proto)
-                result.external = True
+                result.declaration = True
                 return result
             case t if t is FuncCallOrArrayIndex:
                 return Symbol(node.name.name, node.name.type, node.pos)

@@ -101,8 +101,9 @@ class CFBinaryExpr:
             elif (result.left.type == basic_types.PointerT(basic_types.StringT()) and
                   result.right.type == basic_types.PointerT(basic_types.StringT())):
                 if result.left.type.type == basic_types.StringT() and result.right.type.type == basic_types.StringT() and result.op == '+':
-                    concated_string = basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT())
-                    result = basic_ast.ImplicitTypeCast(result.pos, basic_types.PointerT(basic_types.StringT()), concated_string)
+                    concated_length = result.left.type.type.size[0] + result.right.type.type.size[0]
+                    concated_string = basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT(concated_length))
+                    result = basic_ast.ImplicitTypeCast(result.pos, basic_types.PointerT(concated_string.type), concated_string)
             elif isinstance(result.left.type, basic_types.NumericT) and isinstance(result.right.type, basic_types.NumericT):
                 match result.op:
                     case op if op in ('>', '<', '>=', '<=', '=', '<>'):
