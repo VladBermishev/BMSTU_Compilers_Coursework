@@ -1,71 +1,40 @@
 import src.parser.basic_ast as basic_ast
-import src.parser.basic_types as basic_types
+from src.codegen.basic_to_hir_mappings import BasicToHirTypesMapping, BasicToHirNamesMapping
+from src.parser.analyzers.is_breakable import is_breakable
+from src.parser.analyzers.is_const_expr import is_const_expr
 from src.parser.analyzers.symbol_factory import SymbolFactory
-from src.parser.analyzers.symbol_table import SymbolTable
+from src.parser.analyzers.symbol_table import SymbolTable, STBlockType
 from src.hir.builder import HirBuilder
 import src.hir.module as hir_module
 import src.hir.values as hir_values
 import src.hir.types as hir_types
 
 
-
-class BasicToHirTypesMapping:
-    _TP_MAP = {
-        basic_types.Type: hir_types.Type,
-        basic_types.VoidT: hir_types.VoidType,
-        basic_types.BoolT: hir_types.BoolType,
-        basic_types.CharT: hir_types.IntType,
-        basic_types.IntegerT: hir_types.IntType,
-        basic_types.LongT: hir_types.LongType,
-        basic_types.FloatT: hir_types.FloatType,
-        basic_types.DoubleT: hir_types.DoubleType,
-        basic_types.PointerT: hir_types.PointerType,
-        basic_types.ArrayT: hir_types.StructType,
-        basic_types.ProcedureT: hir_types.FunctionType,
-        basic_types.StringT: hir_types.ArrayType,
-    }
-    @staticmethod
-    def get(basic_type: basic_types.Type):
-        match type(basic_type):
-            case t if t is basic_ast.ArrayT:
-                dims = hir_types.ArrayType(BasicToHirTypesMapping.get(basic_type.size[0].type), len(basic_type.size))
-                return hir_types.StructType((hir_types.PointerType(), dims))
-            case t if t is basic_ast.ProcedureT:
-                arguments = map(BasicToHirTypesMapping.get, basic_type.arguments_type)
-                return hir_types.FunctionType(BasicToHirTypesMapping.get(basic_type.return_type), arguments)
-            case t if t is basic_ast.StringT:
-                return hir_types.ArrayType(BasicToHirTypesMapping.get(basic_type.value_type),basic_type.size[0])
-        return BasicToHirTypesMapping._TP_MAP[basic_type]()
-
-class BasicToHirNamesMapping:
-    @staticmethod
-    def get(ast_node):
-        match type(ast_node):
-            case t if t is basic_ast.Varname:
-                return hir_types.mangle(ast_node.name, BasicToHirTypesMapping.get(ast_node.type))
-        return ""
-
 class HirTransform:
     @staticmethod
-    def transform(ast_node, source_id="", _parent=None):
+    def transform(ast_node, source_id="", _parent=None, _st=None):
         match type(ast_node):
             case t if t is basic_ast.Program:
                 return HirTransformProgram.transform(ast_node, source_id=source_id)
             case t if t is basic_ast.FunctionDecl or t is basic_ast.SubroutineDecl:
-                return HirTransformFunctionDecl.transform(ast_node, module=_parent)
+                return HirTransformFunctionDecl.transform(_parent, ast_node, st=_st)
             case t if t is basic_ast.FunctionDef:
-                return HirTransformFunctionDef.transform(ast_node, module=_parent)
+                return HirTransformFunctionDef.transform(_parent, ast_node, st=_st)
             case t if t is basic_ast.SubroutineDef:
-                return HirTransformFunctionDef.transform(ast_node, module=_parent, _return_value=False)
+                return HirTransformFunctionDef.transform(_parent, ast_node, st=_st, _return_value=False)
             case t if t is basic_ast.VariableDecl:
-                return HirTransformVariableDecl.transform(ast_node, module=_parent)
+                return HirTransformVariableDecl.transform(_parent, ast_node, st=_st)
+            case t if t is basic_ast.InitializerList:
+                return HirTransformInitializerList.transform(_parent, ast_node, st=_st)
+            case t if t is basic_ast.ConstExpr:
+                return HirTransformConstExpr.transform(_parent, ast_node, st=_st)
         return None
 
     @staticmethod
-    def build(ast_node, _builder=None):
+    def build(builder, ast_node, _st=None):
         match type(ast_node):
-            case t if t is basic_ast.Program:
-                return HirTransformVariableDecl.build(ast_node, builder=_builder)
+            case t if t is basic_ast.VariableDecl:
+                return HirTransformVariableDecl.build(builder, ast_node, st=_st)
         return None
 
 
@@ -79,39 +48,89 @@ class HirTransformProgram:
 
 class HirTransformFunctionDecl:
     @staticmethod
-    def transform(ast_node: basic_ast.FunctionDecl, st: SymbolTable, module):
-        symbol = SymbolFactory.create(ast_node)
+    def transform(module: hir_module.Module, ast_node: basic_ast.FunctionDecl, st: SymbolTable):
         arg_names = [ BasicToHirNamesMapping.get(arg.name) for arg in ast_node.proto.args]
         result = hir_values.Function(module,
                                      BasicToHirTypesMapping.get(ast_node.proto.type),
                                      BasicToHirNamesMapping.get(ast_node.proto.name),
                                      arg_names=arg_names)
-        st.add(symbol)
+        st.add(SymbolFactory.create(ast_node, metadata=result))
         return result
 
 class HirTransformFunctionDef:
     @staticmethod
-    def transform(ast_node: basic_ast.FunctionDef | basic_ast.SubroutineDef, module, _return_value=True):
-        func_name = ""
-        # ASSOC Symbol with this func
-        return hir_values.Function(module, BasicToHirTypesMapping.get(ast_node.proto.type), func_name)
+    def transform(module: hir_module.Module, ast_node: basic_ast.FunctionDef | basic_ast.SubroutineDef, st: SymbolTable, _return_value=True):
+        func = HirTransformFunctionDecl.transform(module, ast_node, st=st)
+        builder = HirBuilder(func.append_basic_block("entry"))
+        if is_breakable(ast_node):
+            func.append_basic_block("return")
+
+        function_st = st.new_table(STBlockType.FunctionBlock if _return_value else STBlockType.SubroutineBlock)
+        if _return_value:
+            func_ret_variable = basic_ast.Variable(ast_node.proto.name.pos, ast_node.proto.name, ast_node.proto.type.return_type)
+            _return_value = builder.alloca(BasicToHirTypesMapping.get(ast_node.proto.type.return_type),1, ast_node.proto.name)
+            function_st.add(SymbolFactory.create(func_ret_variable, metadata=_return_value), _is_meta=True)
+
+        for ast_arg, hir_arg in zip(ast_node.proto.args, func.args):
+            _return_value = builder.alloca(hir_arg.type, 1, f"{hir_arg.name}.addr")
+            builder.store(hir_arg, _return_value)
+            function_st.add(SymbolFactory.create(ast_arg, metadata=_return_value))
+
+        for statement in ast_node.body:
+            HirTransform.build(builder, statement, function_st)
+
+        if not func.last_block.is_terminated:
+            builder = HirBuilder(func.last_block)
+        else:
+            builder = HirBuilder(func.append_basic_block("return"))
+        _return_instr = builder.ret(_return_value) if _return_value else builder.ret_void()
+        return func
 
 class HirTransformVariableDecl:
     @staticmethod
-    def transform(ast_node: basic_ast.VariableDecl, module: hir_module.Module = None):
+    def transform(module: hir_module.Module, ast_node: basic_ast.VariableDecl, st: SymbolTable):
         init_value = None
         if ast_node.init_value:
             init_value = HirTransform.transform(ast_node.init_value, _parent=module)
-        # ASSOC Symbol with this var
-        return hir_values.GlobalVariable(module, BasicToHirTypesMapping.get(ast_node.variable.type), ast_node.variable.name.name, init_value)
+        variable = hir_values.GlobalVariable(module, BasicToHirTypesMapping.get(ast_node.variable.type), ast_node.variable.name.name, init_value)
+        st.add(SymbolFactory.create(ast_node.variable, metadata=variable))
+        return variable
 
     @staticmethod
-    def build(ast_node: basic_ast.VariableDecl, builder: HirBuilder):
-        var_name = ""
-        # ASSOC Symbol with this ptr
-        ptr = builder.alloca(BasicToHirTypesMapping.get(ast_node.variable.type), 1, var_name)
+    def build(builder: HirBuilder, ast_node: basic_ast.VariableDecl, st: SymbolTable):
+        ptr = builder.alloca(BasicToHirTypesMapping.get(ast_node.variable.type), 1, BasicToHirNamesMapping.get(ast_node.variable.name))
+        st.add(SymbolFactory.create(ast_node.variable, metadata=ptr))
         init_value = None
         if ast_node.init_value:
-            init_value = HirTransform.build(ast_node.init_value, _builder=builder)
+            init_value = HirTransform.build(builder, ast_node.init_value)
         builder.store(init_value, ptr)
         return ptr
+
+class HirTransformInitializerList:
+    @staticmethod
+    def transform(module: hir_module.Module, ast_node: basic_ast.InitializerList, st: SymbolTable):
+        if is_const_expr(ast_node):
+            values = [HirTransform.transform(value, _parent=module, _st=st) for value in ast_node.values]
+            return hir_values.ConstantValue(BasicToHirTypesMapping.get(ast_node.type), values)
+        raise NotImplementedError()
+
+    @staticmethod
+    def build(builder: HirBuilder, ast_node: basic_ast.InitializerList, st: SymbolTable):
+        if is_const_expr(ast_node):
+            init_list = HirTransform.transform(ast_node, _parent=builder.module, _st=st)
+            init_list = hir_values.GlobalVariable(builder.module,
+                                                  init_list.type,
+                                                  f"__const.{builder.function.name}.{ast_node.variable.name.name}",
+                                                  init_list)
+            builder.module.add_global(init_list)
+        else:
+            init_list = builder.alloca(BasicToHirTypesMapping.get(ast_node.type),1, "kek")
+            builder.gep()
+            pass
+        return init_list
+
+
+class HirTransformConstExpr:
+    @staticmethod
+    def transform(module: hir_module.Module, ast_node: basic_ast.ConstExpr, st: SymbolTable):
+        return hir_values.ConstantValue(BasicToHirTypesMapping.get(ast_node.type), ast_node.value)

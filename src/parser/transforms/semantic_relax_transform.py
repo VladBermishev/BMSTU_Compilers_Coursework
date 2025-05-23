@@ -147,6 +147,7 @@ class SRInitializerList:
                 for value in result.values:
                     if SRInitializerList.dimensions(result.values[0]) != SRInitializerList.dimensions(value):
                         raise InappropriateInitializerList(result.pos, SRInitializerList.dimensions(result.values[0]), SRInitializerList.dimensions(value))
+        result.type = ArrayT(SRInitializerList.common_type(result), SRInitializerList.dimensions(result))
         return result
 
     @staticmethod
@@ -175,7 +176,7 @@ class SRVariableDecl:
         if st is not None and not (lookup_result := st.bnl(STLookupStrategy(symbol, STLookupScope.Local))).empty():
             raise RedefinitionError(node.pos, node.variable.name, lookup_result.first().name.pos)
         if node.init_value is not None:
-            return SRVariableDecl.__transfrom_init_value(node, st)
+            return SRVariableDecl.__transform_init_value(node, st)
         if isinstance(node.variable, basic_ast.Array):
             if isinstance(node.variable.type.size[0], int):
                 raise InitializationUndefinedLengthError(node.pos, node.variable.size)
@@ -189,7 +190,7 @@ class SRVariableDecl:
         return result
 
     @staticmethod
-    def __transfrom_init_value(node: basic_ast.VariableDecl, st: SymbolTable):
+    def __transform_init_value(node: basic_ast.VariableDecl, st: SymbolTable):
         result = node
         result.init_value = SemanticRelaxTransform.transform(result.init_value, st)
         if isinstance(result.variable, basic_ast.Array):
@@ -203,6 +204,7 @@ class SRVariableDecl:
             result.variable = SemanticRelaxTransform.transform(result.variable, st)
             result.variable.type.size = SRVariableDecl.__resolve_array_size(result)
             result.variable.size = [basic_ast.ConstExpr(result.variable.pos, value, IntegerT()) for value in result.variable.type.size]
+            result.init_value = SemanticRelaxTransform.transform(result.init_value, st)
         else:
             init_type = SRInitializerList.common_type(result.init_value) if isinstance(result.init_value, basic_ast.InitializerList) else result.init_value.type
             implicit_type = common_type(result.variable.type, init_type)
@@ -214,6 +216,7 @@ class SRVariableDecl:
                 list_size = SRInitializerList.dimensions(result.init_value)
                 expr_size = [basic_ast.ConstExpr(result.variable.pos, value, IntegerT()) for value in list_size]
                 result.variable = basic_ast.Array(result.variable.pos, result.variable.name, ArrayT(result.variable.type, list_size), expr_size)
+                result.init_value = SemanticRelaxTransform.transform(result.init_value, st)
         st.add(SymbolFactory.create(result.variable))
         return result
 
@@ -347,11 +350,16 @@ class SRArrayIndex:
 class SRExitFor:
     @staticmethod
     def transform(node: basic_ast.ExitFor, st: SymbolTable):
-        if st.bl(STBlockType.ForLoopBlock).empty():
+        result = node
+        if (blocks := st.bl(STBlockType.ForLoopBlock)).empty():
             raise InappropriateExit(node.pos, node)
         if node.name is not None and st.qnl(SymbolFactory.create(node)).empty():
             raise UndefinedSymbol(node.pos, node.name)
-        return node
+        if node.name is None:
+            if blocks.first().metadata is None:
+                raise InappropriateExit(node.pos, node)
+            result.name = blocks.first().metadata
+        return result
 
 class SRExit:
     @staticmethod
@@ -405,7 +413,7 @@ class SRForLoop:
         result.start = ImplicitCastAstGenerator.generate(result.start, result.variable.type)
         result.end = ImplicitCastAstGenerator.generate(result.end, result.variable.type)
         for_block = st.new_table(STBlockType.ForLoopBlock)
-        for_block.add(SymbolFactory.create(result.variable))
+        for_block.add(SymbolFactory.create(result.variable), _is_meta=True)
         for_block.add(SymbolFactory.create(basic_ast.ExitFor(result.variable.pos, result.variable)))
         for idx, statement in enumerate(result.body):
             result.body[idx] = SemanticRelaxTransform.transform(statement, for_block)

@@ -60,6 +60,20 @@ class HirBuilder:
         self._instruction_index = 0
         self.position_at_end(block)
 
+    @property
+    def function(self):
+        """
+        The current function.
+        """
+        return self.block.parent
+
+    @property
+    def module(self):
+        """
+        The current module.
+        """
+        return self.block.parent.module
+
     def position_before(self, instr):
         """
         Position immediately before the given instruction.  The current block

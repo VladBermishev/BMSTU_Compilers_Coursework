@@ -45,8 +45,29 @@ class Function(GlobalValue):
         self.args = tuple([Argument(self, tp, name) for tp, name in zip(ftype.args,arg_names)])
         self.return_value = ReturnValue(self, ftype.return_type, self.name)
 
+    @property
+    def last_block(self):
+        return self.blocks[-1]
+
+    def append_basic_block(self, name=''):
+        blk = Block(parent=self, name=name)
+        self.blocks.append(blk)
+        return blk
+
+    def insert_basic_block(self, before, name=''):
+        """
+        Insert block before
+        """
+        blk = Block(parent=self, name=name)
+        self.blocks.insert(before, blk)
+        return blk
+
 class Block(NamedValue):
     def __init__(self, parent, name=""):
         super(Block, self).__init__(parent, hir_types.LabelType(), name)
         self.instructions = []
         self.terminator = None
+
+    @property
+    def is_terminated(self):
+        return self.terminator is not None

@@ -22,11 +22,13 @@ class STLookupScope(Enum):
 
 class Symbol:
 
-    def __init__(self, symbol_name, symbol_type, symbol_loc: Position = Position(), _path=None, declaration=False):
+    def __init__(self, symbol_name, symbol_type, symbol_loc: Position = Position(),
+                 _path=None, declaration=False, metadata=None):
         self.name = symbol_name
         self.type = symbol_type
         self.loc = symbol_loc
         self.declaration = declaration
+        self.metadata = metadata
         self._path = _path
 
     def _set_path(self, path: pathlib.Path):
@@ -76,12 +78,12 @@ class STLookupResult:
     def __init__(self, values: list = None):
         self.results = [] if values is None else values
 
-    def first(self) -> Symbol:
+    def first(self):
         if len(self.results) == 0:
             raise IndexError()
         return self.results[0]
 
-    def last(self) -> Symbol:
+    def last(self):
         if len(self.results) == 0:
             raise IndexError()
         return self.results[-1]
@@ -114,13 +116,16 @@ class SymbolTable:
         self.symbols = []
         self.children = []
         self.block_type = block_type
+        self.metadata = None
 
-    def add(self, symbol: Symbol):
+    def add(self, symbol: Symbol, _is_meta=False):
         lookup_local_result = self.qnl(STLookupStrategy(symbol, STLookupScope.Global))
         if not lookup_local_result.empty():
             raise RedefinitionError(symbol.loc, symbol.name, lookup_local_result.first().loc)
         symbol._set_path(self.path/str(len(self.symbols)))
         self.symbols.append(symbol)
+        if _is_meta:
+            self.metadata = symbol
 
     def new_table(self, block_type: STBlockType = STBlockType.Undefined):
         result = SymbolTable(self, len(self.children), block_type)
