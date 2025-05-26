@@ -3,6 +3,7 @@ import logging
 import argparse
 from pathlib import Path
 
+from src.codegen.transform.hir_transform import HirTransform
 from src.formatter.ast_formatter import AstTreeFormatter
 from src.parser.transforms.semantic_relax_transform import SemanticRelaxTransform
 from src.preprocessor.preprocessor import Preprocessor
@@ -50,5 +51,6 @@ if __name__ == '__main__':
             source_ast = ConstantFoldingTransform.transform(source_ast)
         if args.ast_dump:
             AstTreeFormatter.print(source_ast)
+        module = HirTransform.transform(source_ast, source_id=args.source_file)
     except pe.Error as e:
         logger.error(f'{args.source_file}: Error: {e.pos}: {e.message}')

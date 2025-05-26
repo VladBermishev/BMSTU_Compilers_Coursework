@@ -68,6 +68,14 @@ class HirTransform:
                 return HirTransformExitFor.build(builder, ast_node, st=_st, _store_ptr=_store_ptr)
             case t if t in (basic_ast.ExitWhile, basic_ast.ExitFunction, basic_ast.ExitSubroutine):
                 return HirTransformExit.build(builder, ast_node, st=_st, _store_ptr=_store_ptr)
+            case t if t is basic_ast.AssignStatement:
+                return HirTransformAssignStatement.build(builder, ast_node, st=_st, _store_ptr=_store_ptr)
+            case t if t is basic_ast.ImplicitTypeCast:
+                return HirTransformImplicitTypeCast.build(builder, ast_node, st=_st, _store_ptr=_store_ptr)
+            case t if t is basic_ast.UnaryOpExpr:
+                return HirTransformUnaryOpExpr.build(builder, ast_node, st=_st, _store_ptr=_store_ptr)
+            case t if t is basic_ast.BinOpExpr:
+                return HirTransformBinOpExpr.build(builder, ast_node, st=_st, _store_ptr=_store_ptr)
         return None
 
 
@@ -438,4 +446,34 @@ class HirTransformExitFor:
 class HirTransformExit:
     @staticmethod
     def build(builder: HirBuilder, ast_node: basic_ast.Exit, st: SymbolTable, _store_ptr=None):
-        builder.branch(st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata)
+        block_type = None
+        match type(ast_node):
+            case t if t is basic_ast.ExitWhile:
+                block_type = STBlockType.WhileLoopBlock
+            case t if t is basic_ast.ExitFunction:
+                block_type = STBlockType.FunctionBlock
+            case t if t is basic_ast.ExitSubroutine:
+                block_type = STBlockType.SubroutineBlock
+        if block_type is None:
+            raise TypeError(f"Unexpected type {type(ast_node)}")
+        builder.branch(st.bl(block_type).first().metadata)
+
+class HirTransformAssignStatement:
+    @staticmethod
+    def build(builder: HirBuilder, ast_node: basic_ast.AssignStatement, st: SymbolTable, _store_ptr=None):
+        raise NotImplementedError()
+
+class HirTransformImplicitTypeCast:
+    @staticmethod
+    def build(builder: HirBuilder, ast_node: basic_ast.ImplicitTypeCast, st: SymbolTable, _store_ptr=None):
+        raise NotImplementedError()
+
+class HirTransformUnaryOpExpr:
+    @staticmethod
+    def build(builder: HirBuilder, ast_node: basic_ast.UnaryOpExpr, st: SymbolTable, _store_ptr=None):
+        raise NotImplementedError()
+
+class HirTransformBinOpExpr:
+    @staticmethod
+    def build(builder: HirBuilder, ast_node: basic_ast.BinOpExpr, st: SymbolTable, _store_ptr=None):
+        raise NotImplementedError()
