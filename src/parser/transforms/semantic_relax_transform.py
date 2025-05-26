@@ -1,3 +1,5 @@
+from _ast import Continue
+
 from src.parser import basic_ast
 from src.parser.analyzers.is_const_expr import is_const_expr
 from src.parser.basic_ast_generator import ImplicitCastAstGenerator
@@ -42,6 +44,8 @@ class SemanticRelaxTransform:
                 return SRFuncCallOrArrayIndex.transform(node, st)
             case t if t is basic_ast.PrintCall:
                 return SRPrintCall.transform(node, st)
+            case t if t is basic_ast.LenCall:
+                return SRLenCall.transform(node, st)
             case t if t is basic_ast.FuncCall:
                 return SRFuncCall.transform(node, st)
             case t if t is basic_ast.ArrayIndex:
@@ -81,6 +85,7 @@ class SRProgram:
         result.decls = std_library.decls + result.decls
         for idx, declaration in enumerate(result.decls):
             result.decls[idx] = SemanticRelaxTransform.transform(declaration, st=table)
+        result.decls = list(filter(lambda d: d is not None, result.decls))
         return result, table
 
 
@@ -97,7 +102,7 @@ class SRFunctionDef:
             symb.declaration = False
             st[lookup_result.first().path()] = symb
         else:
-            raise RedefinitionError(result.pos, result.proto.name, lookup_result.first().name.pos)
+            raise RedefinitionError(result.pos, result.proto.name, lookup_result.first().loc)
         result.proto = SemanticRelaxTransform.transform(result.proto, st=st)
         local_function_scope = st.new_table(STBlockType.FunctionBlock)
         if _add_func_ret:
@@ -120,6 +125,8 @@ class SRFunctionDecl:
         elif lookup_result.empty():
             st.add(symbol)
         result.proto = SemanticRelaxTransform.transform(result.proto, st)
+        if result.proto.name.name == 'Len' and result.proto.name.type == IntegerT():
+            return None
         return result
 
 class SRFunctionProto:
@@ -244,24 +251,26 @@ class SRVariableDecl:
 class SRVariable:
     @staticmethod
     def transform(node: basic_ast.Variable, st: SymbolTable):
+        result = node
         symbol = SymbolFactory.create(node)
         lookup_result = st.qnl(STLookupStrategy(symbol, STLookupScope.Global))
         name_lookup_result = st.unql(STLookupStrategy(symbol, STLookupScope.Global))
         if name_lookup_result.empty():
             raise UndefinedSymbol(node.pos, node.name)
-        if lookup_result.empty():
-            node.type = name_lookup_result.first().type
-            match type(node.type):
-                case t if t is ArrayT:
-                    result = basic_ast.ArrayReference(node.pos, node.name, PointerT(node.type), name_lookup_result.first().type.size)
-                    result = SemanticRelaxTransform.transform(result, st)
-                    return result
-                case t if t is StringT:
-                    result = basic_ast.Variable(node.pos, node.name, PointerT(node.type))
-                    result = SemanticRelaxTransform.transform(result, st)
-                    return result
-
-        return node
+        found_symbol = name_lookup_result.first() if lookup_result.empty() else lookup_result.first()
+        match type(found_symbol.type):
+            case t if t is PointerT and type(found_symbol.type.type) is ArrayT:
+                node_size = found_symbol.type.type.size
+                result.type = found_symbol.type
+                result = basic_ast.ArrayReference(node.pos, node.name, result.type, node_size)
+                result = SemanticRelaxTransform.transform(result, st)
+            case t if t is ArrayT:
+                result = basic_ast.ArrayReference(node.pos, node.name, PointerT(found_symbol.type), found_symbol.type.size)
+                result = SemanticRelaxTransform.transform(result, st)
+            case t if t is StringT:
+                result = basic_ast.Variable(node.pos, node.name, PointerT(node.type))
+                result = SemanticRelaxTransform.transform(result, st)
+        return result
 
 class SRArray:
     @staticmethod
@@ -312,6 +321,15 @@ class SRPrintCall:
                 raise UndefinedFunction(result.pos, result.name, ProcedureT(VoidT(), [arg.type]))
         return result
 
+class SRLenCall:
+    @staticmethod
+    def transform(node: basic_ast.LenCall, st: SymbolTable):
+        result = node
+        result.array = SemanticRelaxTransform.transform(result.array, st)
+        if not isinstance(result.array.type, (ArrayT, PointerT)):
+            raise UndefinedFunction(result.pos, 'Len', ProcedureT(IntegerT(), [result.array.type]))
+        return result
+
 class SRFuncCall:
     @staticmethod
     def transform(node: basic_ast.FuncCall, st: SymbolTable):
@@ -319,13 +337,15 @@ class SRFuncCall:
         for idx, arg in enumerate(node.args):
             result.args[idx] = SemanticRelaxTransform.transform(arg, st)
         func_call_symbol = SymbolFactory.create(node)
-        if not st.qnl(STLookupStrategy(func_call_symbol, STLookupScope.Global)).empty():
+        if not (lookup_result := st.qnl(STLookupStrategy(func_call_symbol, STLookupScope.Global))).empty():
+            if lookup_result.first().declaration and lookup_result.first().name == 'Len':
+                return SemanticRelaxTransform.transform(basic_ast.LenCall(result.pos, result.args[0], IntegerT()), st)
             return result
         if not (lookup_result := st.unql(STLookupStrategy(func_call_symbol, STLookupScope.Global))).empty():
             for func in lookup_result:
                 if common_type(func.type, func_call_symbol.type) == func.type:
                     return ImplicitCastAstGenerator.generate(result, func.type)
-            raise UndefinedFunction(result.pos, result.name, func_call_symbol.type)
+            raise UndefinedFunction(result.pos, result.name.name, func_call_symbol.type)
         raise UndefinedSymbol(node.pos, node.name)
 
 class SRArrayIndex:
@@ -336,6 +356,8 @@ class SRArrayIndex:
             result.args[idx] = SemanticRelaxTransform.transform(arg, st)
             if not isinstance(result.args[idx].type, IntegralT):
                 raise ArrayNotIntIndexing(result.pos, result.args[idx].type)
+            if is_const_expr(result.args[idx]) and (array_idx := ConstantFoldingTransform.transform(result.args[idx])).value < 1:
+                raise ArrayInvalidIndex(result.pos, array_idx.value)
         symbol = SymbolFactory.create(node)
         if (lookup_result := st.unql(STLookupStrategy(symbol, STLookupScope.Global))).empty():
             raise UndefinedSymbol(node.pos, node.name)
@@ -344,7 +366,7 @@ class SRArrayIndex:
         if len(result.args) != len(symbol_shape):
             if len(result.args) > len(symbol_shape):
                 raise ArrayIndexingDimensionMismatchError(result.pos, len(symbol_shape),len(result.args))
-            result.type = ArrayT(result.name.type, symbol_shape[len(result.args):len(symbol_shape)])
+            result.type = PointerT(ArrayT(result.name.type, symbol_shape[len(result.args):len(symbol_shape)]))
         return result
 
 class SRExitFor:
@@ -463,6 +485,9 @@ class SRUnaryOpExpr:
         return result
 
 class SRBinaryOpExpr:
+    ARITHMETIC_OPERATORS = ('+','-','*','/')
+    COMPARISON_OPERATORS = ('<','>','<=','>=','=','<>')
+
     @staticmethod
     def transform(node: basic_ast.BinOpExpr, st: SymbolTable):
         result = node
@@ -470,18 +495,16 @@ class SRBinaryOpExpr:
         result.right = SemanticRelaxTransform.transform(result.right, st)
         if isinstance(result.left.type, NumericT) or isinstance(result.right.type, NumericT):
             result.type = None
-            if result.op in ('+', '-', '*'):
-                result.type = common_type(result.left.type, result.right.type)
-            elif result.op == '/':
-                result.type = DoubleT()
-            elif result.op in ('>', '<', '>=', '<=', '=', '<>'):
+            if result.op in SRBinaryOpExpr.ARITHMETIC_OPERATORS:
+                result.type = DoubleT() if result.op == '/' else common_type(result.left.type, result.right.type)
+                result.left = ImplicitCastAstGenerator.generate(result.left, result.type)
+                result.right = ImplicitCastAstGenerator.generate(result.right, result.type)
+            elif result.op in SRBinaryOpExpr.COMPARISON_OPERATORS:
                 result.type = BoolT()
             else:
                 raise UndefinedBinOperType(result.pos, result.left.type, result.op, result.right.type)
             if result.type is None:
                 raise BinBadType(result.pos, result.left.type, result.op, result.right.type)
-            result.left = ImplicitCastAstGenerator.generate(result.left, result.type)
-            result.right = ImplicitCastAstGenerator.generate(result.right, result.type)
         elif isinstance(result.left.type, PointerT) and isinstance(result.right.type, PointerT):
             if result.op != '+' or not (isinstance(result.left.type.type, StringT) and isinstance(result.right.type.type, StringT)):
                 raise UndefinedBinOperType(result.pos, result.left.type, result.op, result.right.type)

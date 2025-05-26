@@ -101,6 +101,13 @@ class HirBuilder:
         self.block = block
         self._instruction_index = len(block.instructions)
 
+    def append_basic_block(self, name=''):
+        """
+        Append a basic block, with the given optional *name*, to the current
+        function.  The current block is not changed.  The new block is returned.
+        """
+        return self.function.insert_basic_block(self.function.blocks.index(self.block) + 1, name)
+
     def _insert(self, instr):
         self.block.instructions.insert(self._instruction_index, instr)
         self._instruction_index += 1
@@ -409,6 +416,20 @@ class HirBuilder:
         self._insert(st)
         return st
 
+    def copy(self, dest, src, size):
+        if not isinstance(dest.type, hir_types.PointerType):
+            msg = "cannot store to value of type %s (%r): not a pointer"
+            raise TypeError(msg % (dest.type, str(dest)))
+        if not isinstance(src.type, hir_types.PointerType):
+            msg = "cannot store to value of type %s (%r): not a pointer"
+            raise TypeError(msg % (src.type, str(src)))
+        if not isinstance(size.type, hir_types.IntType):
+            msg = "cannot store to value of type %s (%r): not an integer"
+            raise TypeError(msg % (size.type, str(size)))
+        cp = hir_instructions.CopyInstruction(self.block, dest, src, size)
+        self._insert(cp)
+        return cp
+
     def branch(self, target):
         """
         Unconditional branch to *target*.
@@ -453,6 +474,10 @@ class HirBuilder:
         Compute effective address (getelementptr):
             name = getelementptr ptr, <indices...>
         """
+        if any([isinstance(idx, int) for idx in indices]):
+            for i, idx in enumerate(indices):
+                if isinstance(idx, int):
+                    indices[i] = hir_values.ConstantValue(hir_types.IntType(), idx)
         instr = hir_instructions.GEPInstruction(self.block, source_etype, ptr, indices, name=name)
         self._insert(instr)
         return instr

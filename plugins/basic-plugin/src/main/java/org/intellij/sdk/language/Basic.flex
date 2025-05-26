@@ -54,6 +54,7 @@ COMMENT=\'[^\r\n]*
     "for" { yybegin(YYINITIAL); return BasicTypes.FOR;}
     "to" { yybegin(YYINITIAL); return BasicTypes.TO;}
     "next" { yybegin(YYINITIAL); return BasicTypes.NEXT;}
+    "exit" { yybegin(YYINITIAL); return BasicTypes.EXIT;}
     "do" { yybegin(YYINITIAL); return BasicTypes.DO;}
     "loop" { yybegin(YYINITIAL); return BasicTypes.LOOP;}
     "while" { yybegin(YYINITIAL); return BasicTypes.WHILE;}

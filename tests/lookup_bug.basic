@@ -1,3 +1,3 @@
 Function test%()
     dim test%(10)
-End
+End Function

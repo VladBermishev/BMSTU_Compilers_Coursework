@@ -248,14 +248,14 @@ public class BasicParser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // EXIT FOR | EXIT FOR Varname | EXIT DO | EXIT LOOP | EXIT SUB | EXIT FUNCTION
+  // EXIT FOR Varname | EXIT FOR | EXIT DO | EXIT LOOP | EXIT SUB | EXIT FUNCTION
   public static boolean ExitStatement(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "ExitStatement")) return false;
     if (!nextTokenIs(b, EXIT)) return false;
     boolean r;
     Marker m = enter_section_(b);
-    r = parseTokens(b, 0, EXIT, FOR);
-    if (!r) r = ExitStatement_1(b, l + 1);
+    r = ExitStatement_0(b, l + 1);
+    if (!r) r = parseTokens(b, 0, EXIT, FOR);
     if (!r) r = parseTokens(b, 0, EXIT, DO);
     if (!r) r = parseTokens(b, 0, EXIT, LOOP);
     if (!r) r = parseTokens(b, 0, EXIT, SUB);
@@ -265,8 +265,8 @@ public class BasicParser implements PsiParser, LightPsiParser {
   }
 
   // EXIT FOR Varname
-  private static boolean ExitStatement_1(PsiBuilder b, int l) {
-    if (!recursion_guard_(b, l, "ExitStatement_1")) return false;
+  private static boolean ExitStatement_0(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "ExitStatement_0")) return false;
     boolean r;
     Marker m = enter_section_(b);
     r = consumeTokens(b, 0, EXIT, FOR);

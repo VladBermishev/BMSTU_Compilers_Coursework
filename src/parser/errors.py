@@ -50,6 +50,15 @@ class ArrayNotIntIndexing(SemanticError):
     def message(self):
         return f'Массив индексируется не целочисленным типом: {self.type}'
 
+class ArrayInvalidIndex(SemanticError):
+    def __init__(self, pos, idx):
+        self.pos = pos
+        self.idx = idx
+
+    @property
+    def message(self):
+        return f'Массив индексируется не с 1: {self.idx}'
+
 
 class ArrayIndexingDimensionMismatchError(SemanticError):
     def __init__(self, pos, expected_len, found_len):

@@ -13,8 +13,8 @@ class StandardLibrary:
     @staticmethod
     def __default_locations():
         defaults = [
-            pathlib.Path("/usr/local/include/"),
-            pathlib.Path("/usr/include"),
+            pathlib.Path("/usr/local/include/tbasic"),
+            pathlib.Path("/usr/include/tbasic"),
             pathlib.Path("/usr/local/lib/tbasic/"),
             pathlib.Path("/usr/lib/tbasic/"),
         ]

@@ -2,7 +2,7 @@
 ## [Grammar](https://github.com/VladBermishev/BMSTU_Compilers_Coursework/blob/master/doc/grammar.bnf)
 
 ### TODO
-- Rebuild plugin (preprocessor, exit for)
+- Godbolt (ints!)
 - ### HIR
 - blocks, named_values, constants
 - transform

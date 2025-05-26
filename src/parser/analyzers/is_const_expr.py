@@ -1,8 +1,6 @@
 from src.parser import basic_ast
 
 def is_const_expr(ast_node: basic_ast.Expr):
-    if not isinstance(ast_node, basic_ast.Expr):
-        raise TypeError("Expected an <Expr>")
     match type(ast_node):
         case t if t is basic_ast.ConstExpr:
             return True

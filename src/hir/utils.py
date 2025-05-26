@@ -20,3 +20,16 @@ class Scope:
 
     def child(self):
         return type(self)(parent=self.parent)
+
+
+def mditer(*dims):
+    idx = [0 for _ in range(len(dims))]
+    while all([lhs < rhs for lhs, rhs in zip(idx, dims)]):
+        yield tuple(idx)
+        idx[-1] += 1
+        for iter in range(len(idx) - 1, 0, -1):
+            if idx[iter] != dims[iter]:
+                break
+            idx[iter] = 0
+            idx[iter - 1] += 1
+            iter -= 1

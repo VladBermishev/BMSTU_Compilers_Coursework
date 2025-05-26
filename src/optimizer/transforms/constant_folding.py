@@ -1,5 +1,6 @@
 from src.parser import basic_ast
 from src.parser import basic_types
+from src.parser.analyzers.is_const_expr import is_const_expr
 from src.parser.basic_types import PointerT
 
 
@@ -36,6 +37,8 @@ class ConstantFoldingTransform(Transform):
             case t if t in (basic_ast.FuncCallOrArrayIndex, basic_ast.FuncCall, basic_ast.ArrayIndex, basic_ast.PrintCall):
                 for idx, arg in enumerate(result.args):
                     result.args[idx] = ConstantFoldingTransform.transform(arg)
+            case t if t is basic_ast.LenCall:
+                result.array = ConstantFoldingTransform.transform(result.array)
             case t if t is basic_ast.AssignStatement:
                 if isinstance(result.variable, basic_ast.FuncCallOrArrayIndex):
                     result.variable = ConstantFoldingTransform.transform(result.variable)
@@ -68,8 +71,9 @@ class CFExpr:
             case t if t is basic_ast.BinOpExpr:
                 result = CFBinaryExpr.transform(result)
             case t if t is basic_ast.ImplicitTypeCast:
-                result = ConstantFoldingTransform.transform(result.expr)
-                result.type = node.type
+                if not type(result.type) is PointerT:
+                    result = ConstantFoldingTransform.transform(result.expr)
+                    result.type = node.type
         return result
 
 
@@ -95,14 +99,14 @@ class CFBinaryExpr:
         result = node
         result.left = CFExpr.transform(result.left)
         result.right = CFExpr.transform(result.right)
-        if isinstance(result.left, basic_ast.ConstExpr) and isinstance(result.right, basic_ast.ConstExpr):
+        if is_const_expr(result.left) and is_const_expr(result.right):
             if result.left.type == basic_types.StringT() and result.right.type == basic_types.StringT() and result.op == '+':
                 result = basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT())
             elif (result.left.type == basic_types.PointerT(basic_types.StringT()) and
                   result.right.type == basic_types.PointerT(basic_types.StringT())):
                 if result.left.type.type == basic_types.StringT() and result.right.type.type == basic_types.StringT() and result.op == '+':
                     concated_length = result.left.type.type.size[0] + result.right.type.type.size[0]
-                    concated_string = basic_ast.ConstExpr(result.pos, f"{result.left.value}{result.right.value}", basic_types.StringT(concated_length))
+                    concated_string = basic_ast.ConstExpr(result.pos, f"{result.left.expr.value}{result.right.expr.value}", basic_types.StringT(concated_length))
                     result = basic_ast.ImplicitTypeCast(result.pos, basic_types.PointerT(concated_string.type), concated_string)
             elif isinstance(result.left.type, basic_types.NumericT) and isinstance(result.right.type, basic_types.NumericT):
                 match result.op:

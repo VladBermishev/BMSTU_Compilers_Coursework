@@ -30,8 +30,8 @@ class BasicToHirTypesMapping:
                 return hir_types.FunctionType(BasicToHirTypesMapping.get(basic_type.return_type), arguments)
             case t if t is basic_ast.StringT:
                 return hir_types.ArrayType(BasicToHirTypesMapping.get(basic_type.value_type), basic_type.size[0])
-            case t if t is None:
-                dims = hir_types.ArrayType(BasicToHirTypesMapping.get(basic_type.size[0].type), len(basic_type.size))
+            case t if t is basic_ast.PointerT and type(basic_type.type) is basic_ast.ArrayT:
+                dims = hir_types.ArrayType(BasicToHirTypesMapping.get(basic_type.type.size[0].type), len(basic_type.type.size))
                 return hir_types.StructType((hir_types.PointerType(), dims))
         return BasicToHirTypesMapping._TP_MAP[basic_type]()
 

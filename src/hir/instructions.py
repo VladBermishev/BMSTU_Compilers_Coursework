@@ -109,6 +109,10 @@ class StoreInstruction(Instruction):
     def __init__(self, parent, value, ptr):
         super(StoreInstruction, self).__init__(parent, hir_types.VoidType(), "store", [value, ptr])
 
+class CopyInstruction(Instruction):
+    def __init__(self, parent, dest, src, size):
+        super(CopyInstruction, self).__init__(parent, hir_types.VoidType(), "copy", [dest, src, size])
+
 class AllocateInstruction(Instruction):
     def __init__(self, parent, typ, count, name):
         operands = [count] if count else ()

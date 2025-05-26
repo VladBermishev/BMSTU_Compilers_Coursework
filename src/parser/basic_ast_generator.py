@@ -40,6 +40,8 @@ class ConstExprICAGenerator:
     @staticmethod
     def generate(node: ConstExpr, implicit_type: Type) -> Expr | None:
         if node.type != implicit_type:
+            if isinstance(implicit_type, StringT):
+                return ImplicitTypeCast(node.pos, implicit_type, node)
             value_type = int if isinstance(implicit_type, IntegralT) else float
             return ConstExpr(node.pos, value_type(node.value), implicit_type)
         return node

@@ -51,6 +51,8 @@ class AstFormatterNode(TreeFormatterNode):
                 return FuncCallOrArrayIndexFormatterNode(node)
             case t if t is basic_ast.PrintCall:
                 return PrintCallFormatterNode(node)
+            case t if t is basic_ast.LenCall:
+                return LenCallFormatterNode(node)
             case t if t is basic_ast.FuncCall:
                 return FuncCallFormatterNode(node)
             case t if t is basic_ast.ArrayIndex:
@@ -161,8 +163,11 @@ class VariableDeclFormatterNode(AstFormatterNode):
             yield AstFormatterNode.create(self.node.init_value)
 
 class FuncCallOrArrayIndexFormatterNode(AstFormatterNode):
-    def __init__(self, node: basic_ast.FuncCallOrArrayIndex):
-        super().__init__(title=f"{type(node).__name__} <line:{node.pos.line}, col:{node.pos.col}> \'{node.name.name}\' \'{node.name.type}\'")
+    def __init__(self, node: basic_ast.FuncCallOrArrayIndex=None, title=None):
+        if title is not None:
+            super().__init__(title=title)
+        elif node is not None:
+            super().__init__(title=f"{type(node).__name__} <line:{node.pos.line}, col:{node.pos.col}> \'{node.name.name}\' \'{node.name.type}\'")
         self.node = node
 
     def __len__(self):
@@ -184,13 +189,25 @@ class PrintCallFormatterNode(AstFormatterNode):
         for arg in self.node.args:
             yield AstFormatterNode.create(arg)
 
+class LenCallFormatterNode(AstFormatterNode):
+    def __init__(self, node: basic_ast.LenCall):
+        super().__init__(title=f"{type(node).__name__} <line:{node.pos.line}, col:{node.pos.col}> \'LenCall\'")
+        self.node = node
+
+    def __len__(self):
+        return 1
+
+    def __iter__(self):
+        yield AstFormatterNode.create(self.node.array)
+
 class FuncCallFormatterNode(FuncCallOrArrayIndexFormatterNode):
     def __init__(self, node: basic_ast.FuncCall):
-        super().__init__(node)
+        super().__init__(node=node)
 
 class ArrayIndexFormatterNode(FuncCallOrArrayIndexFormatterNode):
     def __init__(self, node: basic_ast.ArrayIndex):
-        super().__init__(node)
+        super().__init__(node=node,
+                         title=f"{type(node).__name__} <line:{node.pos.line}, col:{node.pos.col}> \'{node.name.name}\' \'{node.type}\'")
 
 class ExitForFormatterNode(AstFormatterNode):
     def __init__(self, node: basic_ast.ExitFor):

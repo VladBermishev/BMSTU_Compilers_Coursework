@@ -90,9 +90,15 @@ class ArrayReference(Array):
     def create(attrs, coords, res_coord):
         varname, dimensions = attrs
         cvarname, cop, cexpr, ccp = coords
-        size = [0] * dimensions
-        expression_sizes = [ConstExpr(cop.start, 0, IntegerT())] * dimensions
+        size = [ArrayT.undef_size] * dimensions
+        expression_sizes = [ConstExpr(cop.start, ArrayT.undef_size, IntegerT())] * dimensions
         return ArrayReference(cvarname.start, varname, PointerT(ArrayT(varname.type, size)), expression_sizes)
+
+    def dereference(self):
+        return Array(self.pos, self.name, self.type.type, self.size)
+
+    def is_size_undefined(self):
+        return self.type.type.size[0] == ArrayT.undef_size
 
 @dataclass
 class FunctionProto:
@@ -141,6 +147,7 @@ class SubroutineProto:
     args: list[Variable]
     type: ProcedureT
 
+    @staticmethod
     @pe.ExAction
     def create(attrs, coords, res_coord):
         name, args = attrs
@@ -187,6 +194,12 @@ class InitializerList:
         cop, cvalues, ccp = coords
         return InitializerList(cop.start, vals, VoidT())
 
+    def get(self, mdindex):
+        result = self
+        for idx in mdindex:
+            result = result.values[idx]
+        return result
+
 @dataclass
 class VariableDecl:
     pos: pe.Position
@@ -226,6 +239,12 @@ class PrintCall:
         return PrintCall(cprint.start, args)
 
 @dataclass
+class LenCall(Expr):
+    pos: pe.Position
+    array: Expr
+    type: Type
+
+@dataclass
 class FuncCall(Expr):
     pos: pe.Position
     name: Varname
@@ -253,6 +272,8 @@ class ArrayIndex(Expr):
     def create(attrs, coords, res_coord):
         pass
 
+    def is_size_undefined(self):
+        return self.type.type.size[0] == ArrayT.undef_size
 
 @dataclass
 class ExitStatement(Statement):

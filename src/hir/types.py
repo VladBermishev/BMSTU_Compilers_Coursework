@@ -74,3 +74,23 @@ class LabelType(Type):
 
 def mangle(name, tp: Type):
     return f"{name}{tp.mangle_suff}"
+
+def sizeof(tp:Type):
+    match type(tp):
+        case t if t is PointerType:
+            return 4
+        case t if t is BoolType:
+            return 1
+        case t if t is IntType:
+            return 4
+        case t if t is LongType:
+            return 8
+        case t if t is FloatType:
+            return 4
+        case t if t is DoubleType:
+            return 8
+        case t if t is ArrayType:
+            return sizeof(tp.element) * tp.count
+        case t if t is StructType:
+            return sum(map(sizeof, tp.elements_types))
+    return 0

@@ -108,6 +108,7 @@ class DoubleT(FloatingPointT):
 
 class ArrayT(Type):
     name = "array"
+    undef_size = -1
 
     def __init__(self, valueT: Type, size: list[int]):
         self.value_type = valueT
@@ -127,14 +128,15 @@ class ArrayT(Type):
         return False
 
     def __str__(self):
-        return f"{self.value_type}[{','.join(map(str, self.size))}]"
+        dims = list(map(lambda sz: 'und' if sz == ArrayT.undef_size else str(sz), self.size))
+        return f"{self.value_type}[{','.join(dims)}]"
 
 
 class StringT(ArrayT):
     name = "string"
     mangle_suff = "S"
 
-    def __init__(self, length=0):
+    def __init__(self, length=ArrayT.undef_size):
         super().__init__(CharT(), [length])
 
     def __eq__(self, other):
@@ -233,3 +235,6 @@ def common_type(*args, types: typing.List[Type]=None):
             for idx in range(2, len(types)):
                 result = __common_type(result, types[idx])
     return result
+
+def mangle(name, tp: Type):
+    return f"{name}{tp.mangle_suff}"

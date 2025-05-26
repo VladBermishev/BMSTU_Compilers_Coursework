@@ -1,0 +1,13 @@
+Dim c%(3,2,1)
+
+Function Join$(sep$, items$())
+    tmp1% = Len%("abcd") ' -> 4
+    tmp2% = Len%("abcd" + "efgh") ' -> 8 | StringLength%(f"abcdefgh")
+    tmp3% = Len%("abcd" + sep$) ' -> StringLength%(StringConcat$("abcd", sep$))
+    tmp4% = Len%(sep$)  ' -> StringLength%(sep$)
+    tmp5% = Len%(c%) ' -> 3
+    tmp6% = Len%(c%(1)) ' -> 2
+    tmp7% = Len%(c%(1,1)) ' -> 1
+    tmp8% = Len%(items$) ' -> load gep from struct
+    tmp9% = Len%(items$(1)) ' -> StringLength%(items$(1))
+End Function

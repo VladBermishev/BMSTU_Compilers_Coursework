@@ -71,3 +71,24 @@ class Block(NamedValue):
     @property
     def is_terminated(self):
         return self.terminator is not None
+
+
+class HirDefaultValues:
+    @staticmethod
+    def get(tp: hir_types.Type):
+        match type(tp):
+            case t if t is hir_types.VoidType:
+                return ConstantValue(tp, 'None')
+            case t if t is hir_types.IntType:
+                return ConstantValue(tp, 0)
+            case t if t is hir_types.FloatType:
+                return ConstantValue(tp, 0.0)
+            case t if t is hir_types.DoubleType:
+                return ConstantValue(tp, 0.0)
+            case t if t is hir_types.BoolType:
+                return ConstantValue(tp, False)
+            case t if t is hir_types.PointerType:
+                return ConstantValue(tp, 'null')
+            case t if t is hir_types.ArrayType:
+                return ConstantValue(tp, [HirDefaultValues.get(tp.element) for _ in tp.count])
+        raise ValueError(f"Unexpected type: {tp}")

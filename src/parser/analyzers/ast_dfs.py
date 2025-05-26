@@ -30,6 +30,8 @@ class BasicAstSearch:
                 for arg in ast_node.args:
                     if (result := BasicAstSearch.dfs(arg, cond)) is not None:
                         yield result
+            case t if t is basic_ast.LenCall:
+                yield BasicAstSearch.dfs(ast_node.array, cond)
             case t if t is basic_ast.ExitFor:
                 yield BasicAstSearch.dfs(ast_node.name, cond)
             case t if t is basic_ast.AssignStatement:

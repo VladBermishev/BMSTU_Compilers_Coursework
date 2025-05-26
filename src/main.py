@@ -25,7 +25,7 @@ if __name__ == '__main__':
     if args.version:
         print(f"tbasic version {compiler_version}")
         sys.exit(0)
-    if not (Path(args.source_file).exists() and Path(args.source_file).is_file()):
+    if args.source_file is None or not (Path(args.source_file).exists() and Path(args.source_file).is_file()):
         print(f"fatal error: no input files, can't process given path as source: \"{args.source_file}\"", file=sys.stderr)
         sys.exit(1)
     try:
