@@ -2,18 +2,44 @@ import src.hir.types as hir_types
 import src.hir.values as hir_values
 
 class Instruction(hir_values.NamedValue):
-    def __init__(self, parent, optype: hir_types.Type, opname, operands, name=""):
+    def __init__(self, parent, optype: hir_types.Type, opname, operands, name=hir_values.NamedValue.empty_name):
         super(Instruction, self).__init__(parent, optype, name)
         self.optype = optype
         self.opname = opname
         self.operands = operands
 
     def __str__(self):
-        return f"{self.opname} {self.optype} {', '.join(map(str, self.operands))}\n"
+        if self.name != hir_values.NamedValue.empty_name:
+            return f"{self.get_reference()} = {self.opname} {self.optype} {', '.join([x.get_reference() for x in self.operands])}"
+        return f"{self.opname} {self.optype} {', '.join(map(str, self.operands))}"
 
 class CallInstruction(Instruction):
     def __init__(self, parent, func, args, name=""):
-        super(CallInstruction, self).__init__(parent, func.function_type.return_type, "call", [func] + list(args), name=name)
+        if isinstance(func.ftype.return_type, hir_types.VoidType):
+            super(CallInstruction, self).__init__(parent, func.ftype.return_type, "call", [func] + list(args))
+        else:
+            super(CallInstruction, self).__init__(parent, func.ftype.return_type, "call", [func] + list(args), name=name)
+
+    @property
+    def callee(self):
+        return self.operands[0]
+
+    @callee.setter
+    def callee(self, newcallee):
+        self.operands[0] = newcallee
+
+    @property
+    def args(self):
+        return self.operands[1:]
+
+    def __str__(self):
+        args = ', '.join([f'{a.type} {a.get_reference()}' for a in self.args])
+        fnty = self.callee.ftype
+        callee_ref = "{0} {1}".format(fnty.return_type, self.callee.get_reference())
+        if self.name != hir_values.NamedValue.empty_name:
+            return f"{self.get_reference()} = {self.opname} {callee_ref}({args})"
+        else:
+            return f"{self.opname} {callee_ref}({args})"
 
 class Terminator(Instruction):
     def __init__(self, parent, opname, operands):
@@ -53,7 +79,8 @@ class CompareInstruction(Instruction):
         self.op = op
 
     def __str__(self):
-        return "{opname} {op} {ty} {lhs}, {rhs}\n".format(
+        return "{name} = {opname} {op} {ty} {lhs}, {rhs}".format(
+            name = self.get_reference(),
             opname=self.opname,
             op=self.op,
             ty=self.operands[0].type,
@@ -105,13 +132,45 @@ class LoadInstruction(Instruction):
     def __init__(self, parent, ptr, load_type, name):
         super(LoadInstruction, self).__init__(parent, load_type, "load", [ptr], name=name)
 
+    def __str__(self):
+        [val] = self.operands
+        return "{0} = load {1}, {2} {3}".format(
+            self.get_reference(),
+            self.type,
+            val.type,
+            val.get_reference(),
+        )
+
 class StoreInstruction(Instruction):
     def __init__(self, parent, value, ptr):
+        assert value is not None
         super(StoreInstruction, self).__init__(parent, hir_types.VoidType(), "store", [value, ptr])
+
+    def __str__(self):
+        val, ptr = self.operands
+        return "store {0} {1}, {2} {3}".format(
+            val.type,
+            val.get_reference(),
+            ptr.type,
+            ptr.get_reference(),
+        )
 
 class CopyInstruction(Instruction):
     def __init__(self, parent, dest, src, size):
         super(CopyInstruction, self).__init__(parent, hir_types.VoidType(), "copy", [dest, src, size])
+    @property
+    def size(self):
+        return self.operands[2]
+
+    def __str__(self):
+        dest, src, sz = self.operands
+        return "copy {0} {1}, {2} {3}, {4}".format(
+            dest.type,
+            dest.get_reference(),
+            src.type,
+            src.get_reference(),
+            sz,
+        )
 
 class AllocateInstruction(Instruction):
     def __init__(self, parent, typ, count, name):
@@ -120,11 +179,30 @@ class AllocateInstruction(Instruction):
         self.allocated_type = typ
         self.align = None
 
+    def __str__(self):
+        result = f"{self.get_reference()} = {self.opname} {self.allocated_type}"
+        if self.operands:
+            op, = self.operands
+            result += f", {op}"
+        return result
+
 class GEPInstruction(Instruction):
     def __init__(self, parent, type, ptr, indices, name):
-        super(GEPInstruction, self).__init__(parent, type, "getelementptr", [ptr] + list(indices), name=name)
+        super(GEPInstruction, self).__init__(parent, ptr.type, "getelementptr", [ptr] + list(indices), name=name)
         self.pointer = ptr
         self.indices = indices
+        self.source_etype = type
+
+    def __str__(self):
+        indices = ['{0} {1}'.format(i.type, i.get_reference()) for i in self.indices]
+        return "{0} = getelementptr {1}, {2} {3}, {4}".format(
+            self.get_reference(),
+            self.source_etype,
+            self.pointer.type,
+            self.pointer.get_reference(),
+            ', '.join(indices),
+        )
+
 
 class PhiInstruction(Instruction):
     def __init__(self, parent, typ, name):

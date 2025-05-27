@@ -12,9 +12,9 @@ class Module:
         """
         Add a new global value.
         """
-        assert not isinstance(value, GlobalValue)
+        assert isinstance(value, GlobalValue)
         self.globals.append(value)
 
     def add_constructor(self, constructor):
-        assert not isinstance(constructor, Function)
+        assert isinstance(constructor, Function)
         self.constructors.append(constructor)

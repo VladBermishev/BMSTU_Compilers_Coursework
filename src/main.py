@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.codegen.transform.hir_transform import HirTransform
 from src.formatter.ast_formatter import AstTreeFormatter
+from src.formatter.hir_formatter import HirTreeFormatter
 from src.parser.transforms.semantic_relax_transform import SemanticRelaxTransform
 from src.preprocessor.preprocessor import Preprocessor
 from src.std_library.std_library import StandardLibrary
@@ -17,9 +18,10 @@ compiler_version = "1.0.0"
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser("TBasic compiler driver", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    arg_parser.add_argument("--ast-dump", action="store_true", help="print raw ast tree", required=False, default=False)
+    arg_parser.add_argument("--ast-dump", action="store_true", help="print ast tree", required=False, default=False)
     arg_parser.add_argument("--constant-folding", action="store_true", help="[ConstFolding] Transform", required=False, default=False)
     arg_parser.add_argument("--emit-llvm", action="store_true", help="produce llvm-ir", required=False, default=False)
+    arg_parser.add_argument("--emit-hir", action="store_true", help="produce hir", required=False, default=False)
     arg_parser.add_argument("--version", action="store_true", help="print version", required=False, default=False)
     arg_parser.add_argument("source_file", nargs='?', help="source_file", default=None)
     args = arg_parser.parse_args(sys.argv[1:])
@@ -52,5 +54,7 @@ if __name__ == '__main__':
         if args.ast_dump:
             AstTreeFormatter.print(source_ast)
         module = HirTransform.transform(source_ast, source_id=args.source_file)
+        if args.emit_hir:
+            HirTreeFormatter.print(module)
     except pe.Error as e:
         logger.error(f'{args.source_file}: Error: {e.pos}: {e.message}')

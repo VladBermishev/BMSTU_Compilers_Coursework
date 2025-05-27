@@ -26,13 +26,13 @@ class SymbolFactory:
                         case t if t is PointerT and type(tp.type) is StringT:
                             return f"PrintS"
                     return f"Print{tp.mangle_suff}"
-                return [Symbol(__print_name(arg.type), ProcedureT(VoidT(), arg.type), node.pos, metadata=metadata) for arg in node.args]
+                return [Symbol(__print_name(arg.type), ProcedureT(VoidT(), [arg.type]), node.pos, metadata=metadata) for arg in node.args]
             case t if t is FuncCall:
                 return Symbol(node.name.name, ProcedureT(node.name.type, [arg.type for arg in node.args]), node.pos, metadata=metadata)
             case t if t is ArrayIndex:
                 return Symbol(node.name.name, node.name.type, node.pos, metadata=metadata)
             case t if t is ExitFor:
-                return Symbol(f"label{node.name.name}", VoidT(), node.pos, metadata=metadata)
+                return Symbol(f"label{node.name.name.name}", VoidT(), node.pos, metadata=metadata)
             case t if t is Variable:
                 return Symbol(node.name.name, node.type, node.pos, metadata=metadata)
             case t if t is Array:
@@ -51,4 +51,4 @@ class SymbolFactory:
 
     @staticmethod
     def string_concat():
-        return Symbol("StringCopy", ProcedureT(PointerT(StringT()), [PointerT(StringT()), PointerT(StringT())]))
+        return Symbol("StringConcat", ProcedureT(PointerT(StringT()), [PointerT(StringT()), PointerT(StringT())]))

@@ -71,7 +71,7 @@ class CFExpr:
             case t if t is basic_ast.BinOpExpr:
                 result = CFBinaryExpr.transform(result)
             case t if t is basic_ast.ImplicitTypeCast:
-                if not type(result.type) is PointerT:
+                if not type(result.type) is PointerT and is_const_expr(result.expr):
                     result = ConstantFoldingTransform.transform(result.expr)
                     result.type = node.type
         return result

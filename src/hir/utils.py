@@ -9,10 +9,11 @@ class Scope:
 
     def register(self, name):
         basename = name
+        suff = ""
         while self.is_used(name):
             suff = str(self.name_usage[name] + 1)
             name = f"{basename}{suff}"
-        self.name_usage[name] = 1
+        self.name_usage[name] = int(suff or "1")
         return name
 
     def is_used(self, name):
@@ -22,7 +23,7 @@ class Scope:
         return type(self)(parent=self.parent)
 
 
-def mditer(*dims):
+def mditer(dims):
     idx = [0 for _ in range(len(dims))]
     while all([lhs < rhs for lhs, rhs in zip(idx, dims)]):
         yield tuple(idx)

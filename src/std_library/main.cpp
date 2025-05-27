@@ -8,10 +8,15 @@
 #include <list>
 #include <ranges>
 #include <format>
+#include <cstdint>
 
 namespace basic_std{
     using string_type = std::u32string;
     using __abi_args_type = string_type::traits_type::char_type**;
+    struct __attribute__((ms_struct)) __abi_array_type{
+        __abi_args_type ptr;
+        std::int32_t dims[1];
+    };
     std::forward_list<string_type> pool;
 
     std::vector<string_type::pointer> convert_args(std::list<string_type>& args){
@@ -20,7 +25,6 @@ namespace basic_std{
             result_value = value.data();
         return std::move(result);
     }
-
     extern "C"{
         void PrintI(int val){ printf("%d", val); }
         void PrintL(long val){ printf("%ld", val); }
@@ -28,7 +32,7 @@ namespace basic_std{
         void PrintF(float val){ printf("%f", val); }
         void PrintS(string_type::const_pointer val){ printf("%ls", val); }
 
-        string_type::pointer StringConcat(string_type::const_pointer lhs, string_type::const_pointer rhs){
+        string_type::pointer StringConcatP(string_type::const_pointer lhs, string_type::const_pointer rhs){
             std::size_t __lhs_length = string_type::traits_type::length(lhs);
             std::size_t __rhs__length = string_type::traits_type::length(rhs);
             pool.emplace_front(__lhs_length + __rhs__length + 1, '\0');
@@ -37,14 +41,14 @@ namespace basic_std{
             return pool.front().data();
         }
 
-        string_type::pointer StringCopy(string_type::const_pointer str){
+        string_type::pointer StringCopyP(string_type::const_pointer str){
             std::size_t __sz = string_type::traits_type::length(str);
             pool.emplace_front(__sz + 1, '\0');
             string_type::traits_type::copy(pool.front().data(), str, __sz);
             return pool.front().data();
         }
 
-        std::size_t StringLength(string_type::const_pointer str){
+        std::int32_t StringLengthI(string_type::const_pointer str){
             return string_type::traits_type::length(str);
         }
 
@@ -54,7 +58,7 @@ namespace basic_std{
                 throw std::runtime_error(std::format("StringFree bad free: removed {} identical items", __removed));
         }
 
-        void Main(__abi_args_type argv, int len);
+        void Main(__abi_array_type args) __attribute__((ms_abi));
     }
 }
 
@@ -65,6 +69,7 @@ int main(int argc, char** argv){
     for(int idx = 0; idx < argc; idx++)
         args.push_back(converter.from_bytes(argv[idx]));
     auto native_args = basic_std::convert_args(args);
-    basic_std::Main(native_args.data(), argc);
+    basic_std::__abi_array_type args_array{native_args.data(), argc};
+    basic_std::Main(args_array);
     return 0;
 }

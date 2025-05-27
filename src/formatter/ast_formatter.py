@@ -1,5 +1,4 @@
 import sys
-
 from src.formatter.tree import TreeFormatterNode, TreeFormatter
 import src.parser.basic_ast as basic_ast
 

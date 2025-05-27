@@ -57,8 +57,8 @@ class FuncCallICAGenerator:
     @staticmethod
     def generate_args(node: FuncCall, implicit_type: ProcedureT) -> Expr | None:
         result = node
-        for idx, arg in enumerate(result.args):
-            result.args[idx] = ImplicitCastAstGenerator.generate(arg, implicit_type)
+        for idx, (arg, implicit_arg_type) in enumerate(zip(result.args, implicit_type.arguments_type)):
+            result.args[idx] = ImplicitCastAstGenerator.generate(arg, implicit_arg_type)
             if result.args[idx] is None:
                 return None
         return FuncCallICAGenerator.generate_expr(result, implicit_type.return_type)
@@ -75,6 +75,6 @@ class VariableDeclICAGenerator:
     def generate(node: VariableDecl, implicit_type: Type):
         result = node
         if implicit_type != result.init_value.type:
-            result.init_value = ImplicitTypeCast(result.init_value.pos, implicit_type, result.init_value)
+            result.init_value = ImplicitCastAstGenerator.generate(result.init_value, implicit_type)
         return result
 

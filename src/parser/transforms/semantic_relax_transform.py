@@ -206,7 +206,7 @@ class SRVariableDecl:
             implicit_type = common_type(result.variable.type.value_type, SRInitializerList.common_type(result.init_value))
             if implicit_type is None or implicit_type != result.variable.type.value_type:
                 raise ConversionError(result.pos, result.init_value.type, result.variable.type.value_type)
-            elif implicit_type == result.variable.type:
+            elif implicit_type == result.variable.type.value_type:
                 result = ImplicitCastAstGenerator.generate(result, implicit_type)
             result.variable = SemanticRelaxTransform.transform(result.variable, st)
             result.variable.type.size = SRVariableDecl.__resolve_array_size(result)
@@ -375,7 +375,7 @@ class SRExitFor:
         result = node
         if (blocks := st.bl(STBlockType.ForLoopBlock)).empty():
             raise InappropriateExit(node.pos, node)
-        if node.name is not None and st.qnl(SymbolFactory.create(node)).empty():
+        if node.name is not None and st.qnl(STLookupStrategy(SymbolFactory.create(node), STLookupScope.Global)).empty():
             raise UndefinedSymbol(node.pos, node.name)
         if node.name is None:
             if blocks.first().metadata is None:

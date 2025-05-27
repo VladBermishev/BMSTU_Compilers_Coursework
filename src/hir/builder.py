@@ -376,6 +376,13 @@ class HirBuilder:
             name = (typ) value
         """
 
+    @_castop('sitofp')
+    def sitofp(self, value, typ, name=''):
+        """
+        Convert signed integer to floating-point:
+            name = (typ) value
+        """
+
     def alloca(self, typ, size=None, name=''):
         """
         Stack-allocate a slot for *size* elements of the given type.
@@ -423,6 +430,8 @@ class HirBuilder:
         if not isinstance(src.type, hir_types.PointerType):
             msg = "cannot store to value of type %s (%r): not a pointer"
             raise TypeError(msg % (src.type, str(src)))
+        if not isinstance(size, hir_values.ConstantValue):
+            size = hir_values.ConstantValue(hir_types.IntType(), size)
         if not isinstance(size.type, hir_types.IntType):
             msg = "cannot store to value of type %s (%r): not an integer"
             raise TypeError(msg % (size.type, str(size)))
@@ -474,6 +483,7 @@ class HirBuilder:
         Compute effective address (getelementptr):
             name = getelementptr ptr, <indices...>
         """
+        indices = list(indices)
         if any([isinstance(idx, int) for idx in indices]):
             for i, idx in enumerate(indices):
                 if isinstance(idx, int):
