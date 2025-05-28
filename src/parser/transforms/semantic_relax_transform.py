@@ -192,7 +192,7 @@ class SRVariableDecl:
                 if not (is_const_expr(sz) and isinstance(sz.type, IntegralT)):
                     raise InitializationUndefinedLengthError(node.pos, node.variable.size)
             result = ConstantFoldingTransform.transform(result)
-            result.variable.type.size = [ int(sz.value) for sz in result.variable.size]
+            result.variable.type.size = [int(sz.value) for sz in result.variable.size]
         st.add(symbol)
         return result
 

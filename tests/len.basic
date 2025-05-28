@@ -1,9 +1,11 @@
 Dim c%(3,2,1)
+dim global_string$ = "HELLO"
 
 Function Join$(sep$, items$())
     tmp1% = Len%("abcd") ' -> 4
     tmp2% = Len%("abcd" + "efgh") ' -> 8 | StringLength%(f"abcdefgh")
     tmp3% = Len%("abcd" + sep$) ' -> StringLength%(StringConcat$("abcd", sep$))
+    tmp3% = Len%(global_string$) ' -> StringLength%(global_string)
     tmp4% = Len%(sep$)  ' -> StringLength%(sep$)
     tmp5% = Len%(c%) ' -> 3
     tmp6% = Len%(c%(1)) ' -> 2

@@ -1,11 +1,15 @@
+import os
+import subprocess
 import sys
 import logging
 import argparse
-from pathlib import Path
 
+from pathlib import Path
 from src.codegen.transform.hir_transform import HirTransform
+from src.codegen.transform.llvm_ir_transform import LLVMTransform
 from src.formatter.ast_formatter import AstTreeFormatter
 from src.formatter.hir_formatter import HirTreeFormatter
+from src.formatter.llvm_formatter import LLVMFormatter
 from src.parser.transforms.semantic_relax_transform import SemanticRelaxTransform
 from src.preprocessor.preprocessor import Preprocessor
 from src.std_library.std_library import StandardLibrary
@@ -23,6 +27,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("--emit-llvm", action="store_true", help="produce llvm-ir", required=False, default=False)
     arg_parser.add_argument("--emit-hir", action="store_true", help="produce hir", required=False, default=False)
     arg_parser.add_argument("--version", action="store_true", help="print version", required=False, default=False)
+    arg_parser.add_argument("--output", help="outfile", required=False, default=None)
     arg_parser.add_argument("source_file", nargs='?', help="source_file", default=None)
     args = arg_parser.parse_args(sys.argv[1:])
     if args.version:
@@ -36,7 +41,7 @@ if __name__ == '__main__':
         basic_parser.add_skipped_domain('\\s')
         basic_parser.add_skipped_domain('\\\'.*?\\n')
         std_lib_ast = None
-        if (std_location := StandardLibrary.location()) is not None:
+        if (std_location := StandardLibrary.location(Path("std.basic"))) is not None:
             logger.info(f"Parsing standart library: {std_location}")
             try:
                 preprocessed_source = Preprocessor().process(std_location)
@@ -48,13 +53,29 @@ if __name__ == '__main__':
         logger.info(f"Parsing source file: {args.source_file}")
         preprocessed_source = Preprocessor().process(Path(args.source_file))
         source_ast = basic_parser.parse(preprocessed_source)
-        source_ast, source_st = SemanticRelaxTransform.transform(source_ast, standart_library=std_lib_ast)
-        if args.constant_folding:
-            source_ast = ConstantFoldingTransform.transform(source_ast)
-        if args.ast_dump:
-            AstTreeFormatter.print(source_ast)
-        module = HirTransform.transform(source_ast, source_id=args.source_file)
-        if args.emit_hir:
-            HirTreeFormatter.print(module)
     except pe.Error as e:
         logger.error(f'{args.source_file}: Error: {e.pos}: {e.message}')
+        exit(1)
+
+    source_ast, source_st = SemanticRelaxTransform.transform(source_ast, standart_library=std_lib_ast)
+    if args.constant_folding:
+        source_ast = ConstantFoldingTransform.transform(source_ast)
+    if args.ast_dump:
+        AstTreeFormatter.print(source_ast)
+        exit(0)
+    module = HirTransform.transform(source_ast, source_id=args.source_file)
+    if args.emit_hir:
+        HirTreeFormatter.print(module)
+        exit(0)
+    llvm_module = LLVMTransform.transform(module)
+    if args.emit_llvm:
+        LLVMFormatter.print(llvm_module)
+        exit(0)
+    outfile_path = Path(args.source_file).parent / "a.out"
+    if args.output is not None:
+        outfile_path = Path(args.output)
+    with open(outfile_path.with_suffix('.ll'), "w") as fout:
+        LLVMFormatter.print(llvm_module, file=fout)
+    tmp = f"llc -filetype=obj {outfile_path.with_suffix('.ll')} -o {outfile_path.with_suffix('.o')}"
+    subprocess.run(["llc", "-filetype=obj", outfile_path.with_suffix('.ll'), "-o", outfile_path.with_suffix('.o')])
+    subprocess.run(["clang", StandardLibrary.location(Path("std.o")), outfile_path.with_suffix('.o'), "-o", outfile_path, "-lstdc++"])
