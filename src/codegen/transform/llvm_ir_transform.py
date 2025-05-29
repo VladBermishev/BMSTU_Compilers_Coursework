@@ -40,6 +40,8 @@ class LLVMTransform:
                 value = node.value
                 if isinstance(value, list):
                     value = [LLVMTransform.transform(elem) for elem in value]
+                elif isinstance(node.type, hir_types.PointerType):
+                    value = None
                 elif isinstance(value, str):
                     value = [ llvm_values.Constant(llvm_types.IntType(32), ord(c)) for c in value]
                 return llvm_values.Constant(HirToLLVMTypesMapping.get(node.type), value)
@@ -137,6 +139,7 @@ class LLVMTransformModule:
         if len(node.constructors) > 0:
             ctor_struct_type = llvm_types.LiteralStructType([llvm_types.IntType(32), llvm_types.PointerType(), llvm_types.PointerType()])
             llvm_global_ctor = llvm_values.GlobalVariable(module, llvm_types.ArrayType(ctor_struct_type, 1), "llvm.global_ctors")
+            llvm_global_ctor.linkage = "appending"
             ctors = [LLVMTransform.transform(global_ctor, module, hir_symbol_table) for global_ctor in node.constructors]
             global_ctor = llvm_values.Function(module,
                                                llvm_types.FunctionType(llvm_types.VoidType(), []),
@@ -165,7 +168,10 @@ class LLVMTransformGlobalVariable:
     @staticmethod
     def transform(node: hir_values.GlobalVariable, _parent=None, st=None):
         result = llvm_values.GlobalVariable(_parent, HirToLLVMTypesMapping.get(node.value_type), node.name)
-        result.initializer = LLVMTransform.transform(node.init_value)
+        if isinstance(node.init_value, hir_values.ConstantValue):
+            result.initializer = LLVMTransform.transform(node.init_value, _parent, st)
+        else:
+            result.initializer = st[node.init_value.get_reference()]
         result.global_constant = node.global_constant
         st[node.get_reference()] = result
         return result

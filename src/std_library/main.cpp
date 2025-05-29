@@ -58,7 +58,7 @@ namespace basic_std{
                 throw std::runtime_error(std::format("StringFree bad free: removed {} identical items", __removed));
         }
 
-        void Main(__abi_array_type args) __attribute__((ms_abi));
+        void Main(__abi_array_type* args)/* __attribute__((ms_abi))*/;
     }
 }
 
@@ -70,6 +70,6 @@ int main(int argc, char** argv){
         args.push_back(converter.from_bytes(argv[idx]));
     auto native_args = basic_std::convert_args(args);
     basic_std::__abi_array_type args_array{native_args.data(), argc};
-    basic_std::Main(args_array);
+     basic_std::Main(&args_array);
     return 0;
 }

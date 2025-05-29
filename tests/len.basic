@@ -1,15 +1,19 @@
 Dim c%(3,2,1)
 dim global_string$ = "HELLO"
 
-Function Join$(sep$, items$())
-    tmp1% = Len%("abcd") ' -> 4
-    tmp2% = Len%("abcd" + "efgh") ' -> 8 | StringLength%(f"abcdefgh")
-    tmp3% = Len%("abcd" + sep$) ' -> StringLength%(StringConcat$("abcd", sep$))
-    tmp3% = Len%(global_string$) ' -> StringLength%(global_string)
-    tmp4% = Len%(sep$)  ' -> StringLength%(sep$)
-    tmp5% = Len%(c%) ' -> 3
-    tmp6% = Len%(c%(1)) ' -> 2
-    tmp7% = Len%(c%(1,1)) ' -> 1
-    tmp8% = Len%(items$) ' -> load gep from struct
-    tmp9% = Len%(items$(1)) ' -> StringLength%(items$(1))
-End Function
+Sub Join(sep$, items$())
+    Print Len%("abcd"), "\n" ' -> 4
+    Print Len%("abcd" + "efgh"), "\n" ' -> 8 | StringLength%(f"abcdefgh")
+    Print Len%("abcd" + sep$), "\n" ' -> StringLength%(StringConcat$("abcd", sep$))
+    Print Len%(global_string$), "\n" ' -> StringLength%(global_string)
+    Print Len%(sep$), "\n"  ' -> StringLength%(sep$)
+    Print Len%(c%), "\n" ' -> 3
+    Print Len%(c%(1)), "\n" ' -> 2
+    Print Len%(c%(1,1)), "\n" ' -> 1
+    Print Len%(items$), "\n" ' -> load gep from struct
+    Print Len%(items$(1)), "\n" ' -> StringLength%(items$(1))
+End Sub
+
+Sub Main(args$())
+    Join(", ", args$)
+End Sub

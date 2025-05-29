@@ -70,6 +70,18 @@ class CompareInstruction(Instruction):
     # Define the following in subclasses
     OPNAME = 'invalid-compare'
     VALID_OP = {}
+    INVERSE_OP = {
+        'eq': 'ne',
+        'ne': 'eq',
+        'slt': 'sge',
+        'sle': 'sgt',
+        'sgt': 'sle',
+        'sge': 'slt',
+        'ult': 'uge',
+        'ule': 'ugt',
+        'ugt': 'ule',
+        'uge': 'ult'
+    }
 
     def __init__(self, parent, op, lhs, rhs, name=''):
         if op not in self.VALID_OP:
@@ -87,6 +99,12 @@ class CompareInstruction(Instruction):
             lhs=self.operands[0].get_reference(),
             rhs=self.operands[1].get_reference(),
         )
+
+    def is_related(self, other):
+        if isinstance(other, CompareInstruction):
+            return (self.opname == other.opname and
+                    (self.op == other.op or ))
+        return False
 
 class IntCompareInstruction(CompareInstruction):
     OPNAME = 'icmp'
@@ -212,7 +230,6 @@ class PhiInstruction(Instruction):
     def add_incoming(self, value, block):
         assert isinstance(block, hir_values.Block)
         self.incomings.append((value, block))
-
 
 
 

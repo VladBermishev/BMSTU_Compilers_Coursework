@@ -4,22 +4,25 @@ from src.parser.analyzers.is_breakable import is_breakable
 from src.parser.analyzers.is_const_expr import is_const_expr
 from src.parser.analyzers.symbol_factory import SymbolFactory
 from src.parser.analyzers.symbol_table import SymbolTable, STBlockType, STLookupStrategy, STLookupScope
+from src.parser.transforms.semantic_relax_transform import SRInitializerList
 from src.hir.builder import HirBuilder
 from src.hir.utils import mditer
 import src.hir.module as hir_module
 import src.hir.values as hir_values
 import src.hir.types as hir_types
 import src.hir.instructions as hir_instructions
-from src.parser.transforms.semantic_relax_transform import SRInitializerList
 
 
 class SymbolMeta:
     def __init__(self, obj):
         self.value = obj
 
-    def load(self, builder: HirBuilder):
+    def load(self, builder: HirBuilder, name="", typ=None):
         if isinstance(self.value, hir_instructions.AllocateInstruction):
-            return builder.load(self.value, "", self.value.allocated_type)
+            return builder.load(self.value, name or "", typ or self.value.allocated_type)
+        #elif isinstance(self.value, hir_values.GlobalVariable) and isinstance(self.value.init_value.type, hir_types.PointerType):
+        elif isinstance(self.value, hir_values.GlobalVariable):
+            return builder.load(self.value, name or "", typ or self.value.type)
         return self.value
 
 
@@ -169,13 +172,12 @@ class HirTransformVariableDecl:
     @staticmethod
     def build(builder: HirBuilder, ast_node: basic_ast.VariableDecl, st: SymbolTable):
         ptr = builder.alloca(BasicToHirTypesMapping.get(ast_node.variable.type), 1, BasicToHirNamesMapping.get(ast_node.variable.name))
-        st.add(SymbolFactory.create(ast_node.variable, metadata=lambda b: b.load(ptr, "", ptr.allocated_type)))
+        st.add(SymbolFactory.create(ast_node.variable, metadata=SymbolMeta(ptr)))
         return HirTransformVariableDecl.build_ptr_assignment(builder, ptr, ast_node.variable, ast_node.init_value, st)
 
     @staticmethod
     def build_ptr_assignment(builder: HirBuilder, ptr, ast_variable: basic_ast.Variable, ast_init: basic_ast.Expr, st: SymbolTable):
         tp = ptr.type
-
         tp = ptr.source_etype if isinstance(ptr, hir_instructions.GEPInstruction) else ptr.allocated_type
         init_value = hir_values.HirDefaultValues.get(tp)
         if ast_init:
@@ -229,7 +231,7 @@ class HirTransformVariable:
     @staticmethod
     def build(builder: HirBuilder, ast_node: basic_ast.Variable, st: SymbolTable, _store_ptr=None):
         result = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global))
-        return builder.load(result.first().metadata(builder), ast_node.name.name, BasicToHirTypesMapping.get(ast_node.type))
+        return result.first().metadata.load(builder, ast_node.name.name, BasicToHirTypesMapping.get(ast_node.type))
 
 class HirTransformArray:
     @staticmethod
@@ -239,6 +241,13 @@ class HirTransformArray:
 class HirTransformConstExpr:
     @staticmethod
     def transform(module: hir_module.Module, ast_node: basic_ast.ConstExpr, st: SymbolTable):
+        if isinstance(ast_node.type, basic_ast.StringT):
+            const_value = hir_values.ConstantValue(BasicToHirTypesMapping.get(ast_node.type), ast_node.value)
+            global_var = hir_values.GlobalVariable(module, const_value.type, f"__str", const_value)
+            global_var.global_constant = True
+            global_var.deduplicate()
+            module.add_global(global_var)
+            return global_var
         return hir_values.ConstantValue(BasicToHirTypesMapping.get(ast_node.type), ast_node.value)
 
     @staticmethod
@@ -257,14 +266,15 @@ class HirTransformArrayReference:
     @staticmethod
     def build(builder: HirBuilder, ast_node: basic_ast.ArrayReference, st: SymbolTable, _store_ptr=None):
         if not (lookup_result := st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global))).empty():
-            return lookup_result.first().metadata(builder)
+            return lookup_result.first().metadata.load(builder)
         array = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node.dereference()), STLookupScope.Global)).first()
         size = [hir_values.ConstantValue(hir_types.IntType(), sz) for sz in array.type.size]
         struct_ptr = builder.alloca(BasicToHirTypesMapping.get(ast_node.type))
         array_ptr = builder.gep(struct_ptr.allocated_type, struct_ptr, [0, 0], name=f"{ast_node.name.name}.ptr")
-        builder.store(array.metadata(builder), array_ptr)
+        builder.store(array.metadata.value, array_ptr)
+        dims_ptr = builder.gep(struct_ptr.allocated_type, struct_ptr, [0, 1], name=f"{ast_node.name.name}.dims.addr")
         for idx, sz in enumerate(size):
-            size_ptr = builder.gep(struct_ptr.allocated_type.elements_types[1], array_ptr, [0, idx], name=f"{ast_node.name.name}.dim.{idx}")
+            size_ptr = builder.gep(struct_ptr.allocated_type.elements_types[1], dims_ptr, [0, idx], name=f"{ast_node.name.name}.dim.{idx}")
             builder.store(sz, size_ptr)
         return struct_ptr
 
@@ -275,7 +285,7 @@ class HirTransformPrintCall:
         args = [HirTransform.build(builder, arg, st) for arg in ast_node.args]
         prints = SymbolFactory.create(ast_node)
         for hir_arg, ast_arg, print_symbol in zip(args, ast_node.args, prints):
-            print_func = st.qnl(STLookupStrategy(print_symbol, STLookupScope.Global)).first().metadata(builder)
+            print_func = st.qnl(STLookupStrategy(print_symbol, STLookupScope.Global)).first().metadata.load(builder)
             builder.call(print_func, [hir_arg])
 
 class HirTransformLenCall:
@@ -302,8 +312,8 @@ class HirTransformLenCall:
     @staticmethod
     def build_strlen(builder: HirBuilder, ast_node: basic_ast.LenCall, st: SymbolTable):
         # str$ -> StringLength%(str$)
-        strlen = st.qnl(STLookupStrategy(SymbolFactory.string_length(), STLookupScope.Global)).first().metadata(builder)
-        string = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node.array), STLookupScope.Global)).first().metadata(builder)
+        strlen = st.qnl(STLookupStrategy(SymbolFactory.string_length(), STLookupScope.Global)).first().metadata.load(builder)
+        string = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node.array), STLookupScope.Global)).first().metadata.load(builder)
         return builder.call(strlen, [string], "strlen.call")
 
     @staticmethod
@@ -312,10 +322,10 @@ class HirTransformLenCall:
         if not ast_node.is_size_undefined():
             symbol = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node.dereference()), STLookupScope.Global)).first()
             return hir_values.ConstantValue(hir_types.IntType(), symbol.type.size[0])
-        array = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata(builder)
-        size_ptr = builder.gep(BasicToHirTypesMapping.get(ast_node.type), array, [0, 1, 0],
-                               name=f"{ast_node.name.name}.len.ptr")
-        return builder.load(size_ptr, name=f"{ast_node.name.name}.len.ptr", typ=hir_types.IntType())
+        array = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata.load(builder)
+        dims_ptr = builder.gep(BasicToHirTypesMapping.get(ast_node.type), array, [0, 1], name=f"{ast_node.name.name}.dims.ptr")
+        size_ptr = builder.gep(dims_ptr.source_etype.elements_types[1], dims_ptr, [0, 0], name=f"{ast_node.name.name}.len.ptr")
+        return builder.load(size_ptr, name=f"{ast_node.name.name}.len", typ=hir_types.IntType())
 
     @staticmethod
     def build_array_index(builder: HirBuilder, ast_node: basic_ast.ArrayIndex, st: SymbolTable):
@@ -324,10 +334,11 @@ class HirTransformLenCall:
             return hir_values.ConstantValue(hir_types.IntType(), array.type.size[len(ast_node.args)])
         if isinstance(ast_node.type.type, basic_ast.StringT):
             string = HirTransform.build(builder, ast_node, st)
-            strlen = st.qnl(STLookupStrategy(SymbolFactory.string_length(), STLookupScope.Global)).first().metadata(builder)
+            strlen = st.qnl(STLookupStrategy(SymbolFactory.string_length(), STLookupScope.Global)).first().metadata.load(builder)
             return builder.call(strlen, [string])
-        array = st.unql(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata(builder)
-        size_ptr = builder.gep(BasicToHirTypesMapping.get(ast_node.type), array, [0, 1, len(ast_node.args)], name=f"{ast_node.name.name}.len.ptr")
+        array = st.unql(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata.load(builder)
+        dims_ptr = builder.gep(BasicToHirTypesMapping.get(ast_node.type), array, [0, 1], name=f"{ast_node.name.name}.dims.ptr")
+        size_ptr = builder.gep(dims_ptr.source_etype.elements_types[1], dims_ptr, [len(ast_node.args), 0], name=f"{ast_node.name.name}.len.ptr")
         return builder.load(size_ptr, name=f"{ast_node.name.name}.len.ptr", typ=hir_types.IntType())
 
     @staticmethod
@@ -344,7 +355,7 @@ class HirTransformFuncCall:
     @staticmethod
     def build(builder: HirBuilder, ast_node: basic_ast.FuncCall, st: SymbolTable, _store_ptr=None):
         args = [HirTransform.build(builder, arg, st) for arg in ast_node.args]
-        func = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata(builder)
+        func = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata.load(builder)
         return builder.call(func, args, name=f"call.{ast_node.name.name}")
 
 
@@ -363,16 +374,22 @@ class HirTransformArrayIndex:
             else:
                 indices[i] = builder.sub(idx, HirTransform.one, f"{ast_node.name.name}.index.{i}")
         array_symbol = st.unql(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first()
-        array = array_symbol.metadata(builder)
         # JUST HOLY FUCKING SHIT, need to fix this someday
+        array = array_symbol.metadata.value
         tp = array.type
-        if isinstance(array, hir_instructions.AllocateInstruction):
+        if isinstance(array, (hir_instructions.AllocateInstruction, hir_instructions.LoadInstruction)):
             if BasicToHirTypesMapping.argument_get(array_symbol.type) != BasicToHirTypesMapping.get(array_symbol.type):
+                array = array_symbol.metadata.load(builder)
                 tp = BasicToHirTypesMapping.get(array_symbol.type)
-            else:
+            elif isinstance(array, hir_instructions.AllocateInstruction):
                 tp = array.allocated_type
         #
-        array_ptr = builder.gep(tp, array, [0, 0], name=f"{ast_node.name.name}.ptr")
+        if isinstance(tp, hir_types.ArrayType):
+            return builder.gep(tp, array, [0] + indices, name=f"{ast_node.name.name}.idx")
+        elif isinstance(array, hir_values.GlobalVariable) and isinstance(tp, hir_types.PointerType):
+            return builder.gep(array.init_value.type, array, [0] + indices, name=f"{ast_node.name.name}.idx")
+        array_ptr = builder.gep(tp, array, [0, 0], name=f"{ast_node.name.name}.ptr.addr")
+        array_ptr = builder.load(array_ptr, name=f"{ast_node.name.name}.ptr", typ=hir_types.PointerType())
         for i, idx in enumerate(indices[:-1]):
             array_ptr = builder.gep(hir_types.PointerType(), array_ptr, [indices[idx]], name=f"{ast_node.name.name}.idx")
             array_ptr = builder.load(array_ptr, name=f"{ast_node.name.name}.val.ptr", typ=hir_types.PointerType())
@@ -388,7 +405,7 @@ class HirTransformIfElseStatement:
         bbif = builder.append_basic_block(name=f"if.then")
         builder.cbranch(HirTransform.build(builder, ast_node.condition, st), bbif, bbelse or bbend)
         st_then = st.new_table(STBlockType.IfThenBlock)
-        st_then.metadata = lambda b: bbend
+        st_then.metadata = SymbolMeta(bbend)
         builder.position_at_end(bbif)
         for stmt in ast_node.then_branch:
             HirTransform.build(builder, stmt, st_then)
@@ -396,7 +413,7 @@ class HirTransformIfElseStatement:
             builder.branch(bbend)
         if bbelse is not None:
             st_else = st.new_table(STBlockType.IfElseBlock)
-            st_else.metadata = lambda b: bbend
+            st_else.metadata = SymbolMeta(bbend)
             builder.position_at_end(bbelse)
             for stmt in ast_node.else_branch:
                 HirTransform.build(builder, stmt, st_else)
@@ -424,7 +441,7 @@ class HirTransformWhileLoop:
             cond = builder.xor(cond, hir_values.ConstantValue(hir_types.BoolType(), 1))
         builder.cbranch(cond, bbbody, bbend)
         st_body = st.new_table(STBlockType.WhileLoopBlock)
-        st_body.metadata = lambda b: bbend
+        st_body.metadata = SymbolMeta(bbend)
         builder.position_at_end(bbbody)
         for stmt in ast_node.body:
             HirTransform.build(builder, stmt, st_body)
@@ -438,7 +455,7 @@ class HirTransformWhileLoop:
         bbbody = builder.append_basic_block(name=f"while.body")
         builder.branch(bbbody)
         st_body = st.new_table(STBlockType.WhileLoopBlock)
-        st_body.metadata = lambda b: bbend
+        st_body.metadata = SymbolMeta(bbend)
         builder.position_at_end(bbbody)
         for stmt in ast_node.body:
             HirTransform.build(builder, stmt, st_body)
@@ -465,8 +482,8 @@ class HirTransformForLoop:
         cond = builder.icmp_signed("<=", lhs, rhs, name=f"cmp")
         builder.cbranch(cond, bbbody, bbend)
         for_block = st.new_table(STBlockType.ForLoopBlock)
-        for_block.add(SymbolFactory.create(ast_node.variable, metadata=lambda b: b.load(idx_ptr, "", idx_ptr.allocated_type)), _is_meta=True)
-        for_block.add(SymbolFactory.create(basic_ast.ExitFor(ast_node.variable.pos, ast_node.variable),metadata=lambda b: bbend))
+        for_block.add(SymbolFactory.create(ast_node.variable, metadata=SymbolMeta(idx_ptr)), _is_meta=True)
+        for_block.add(SymbolFactory.create(basic_ast.ExitFor(ast_node.variable.pos, ast_node.variable),metadata=SymbolMeta(bbend)))
         builder.position_at_end(bbbody)
         for stmt in ast_node.body:
             HirTransform.build(builder, stmt, for_block)
@@ -484,7 +501,7 @@ class HirTransformForLoop:
 class HirTransformExitFor:
     @staticmethod
     def build(builder: HirBuilder, ast_node: basic_ast.ExitFor, st: SymbolTable, _store_ptr=None):
-        builder.branch(st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata(builder))
+        builder.branch(st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata.value)
 
 class HirTransformExit:
     @staticmethod
@@ -499,7 +516,7 @@ class HirTransformExit:
                 block_type = STBlockType.SubroutineBlock
         if block_type is None:
             raise TypeError(f"Unexpected type {type(ast_node)}")
-        builder.branch(st.bl(block_type).first().metadata(builder))
+        builder.branch(st.bl(block_type).first().metadata.value)
 
 class HirTransformAssignStatement:
     @staticmethod
@@ -507,7 +524,7 @@ class HirTransformAssignStatement:
         ptr = None
         match type(ast_node.variable):
             case t if t is basic_ast.Variable:
-                ptr = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node.variable),STLookupScope.Global)).first().metadata(builder)
+                ptr = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node.variable),STLookupScope.Global)).first().metadata.value
             case t if t is basic_ast.ArrayIndex:
                 ptr = HirTransformArrayIndex.build_ref(builder, ast_node.variable, st)
         if ptr is None:
@@ -517,6 +534,8 @@ class HirTransformAssignStatement:
 class HirTransformImplicitTypeCast:
     @staticmethod
     def transform(module: hir_module.Module, ast_node: basic_ast.ImplicitTypeCast, st: SymbolTable):
+        if isinstance(ast_node.expr, basic_ast.ConstExpr) and isinstance(ast_node.expr.type, basic_ast.StringT):
+            return HirTransform.transform(ast_node.expr, _parent=module, _st=st)
         return hir_values.ConstantValue(BasicToHirTypesMapping.get(ast_node.type.type), ast_node.expr.value)
 
     # Bool -> Int -zext> Long -sitofp> Float -fpext> Double
@@ -602,6 +621,6 @@ class HirTransformBinOpExpr:
             if func is not None:
                 return func(builder, left, right, name=HirTransformBinOpExpr.ARITHMETIC_OPERATORS_NAMES[ast_node.op])
             if isinstance(ast_node.type, basic_ast.PointerT) and isinstance(ast_node.type.type, basic_ast.StringT):
-                strcat = st.qnl(STLookupStrategy(SymbolFactory.string_concat(), STLookupScope.Global)).first().metadata(builder)
+                strcat = st.qnl(STLookupStrategy(SymbolFactory.string_concat(), STLookupScope.Global)).first().metadata.value
                 return builder.call(strcat, [left, right], name=f"strcat")
         raise ValueError(f"Unsupported operator {ast_node.op}")

@@ -67,7 +67,7 @@ class ConstantValue(Value):
 
         elif isinstance(self.value, bytearray):
             val = 'c"{0}"'.format(_escape_string(self.value))
-        elif isinstance(self.value, str):
+        elif not isinstance(self.type, hir_types.PointerType) and isinstance(self.value, str):
             val = 'c"{0}"'.format(self.value.replace('\n', '\\n').replace('\0', '\\0'))
         else:
             val = self.type.format_constant(self.value)
@@ -189,7 +189,7 @@ class HirDefaultValues:
             case t if t is hir_types.BoolType:
                 return ConstantValue(tp, False)
             case t if t is hir_types.PointerType:
-                return ConstantValue(tp, 'null')
+                return ConstantValue(tp, hir_types.PointerType.null)
             case t if t is hir_types.ArrayType:
                 return ConstantValue(tp, [HirDefaultValues.get(tp.element) for _ in range(tp.count)])
         raise ValueError(f"Unexpected type: {tp}")

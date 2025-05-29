@@ -1,3 +1,7 @@
 dim a% = 10
 dim b% = 20
 Dim arr4%(1) = {a% + b%}
+
+Sub Main(args$())
+    Print arr4%(1)
+End Sub

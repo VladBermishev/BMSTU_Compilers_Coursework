@@ -1,0 +1,4 @@
+dim a$ = "HELLO"
+dim b$ = "WORLD"
+dim c$ = a$ + b$
+dim d$ = "HELLO" + "WORLD"

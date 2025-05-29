@@ -64,6 +64,9 @@ class PointerType(Type):
     def __str__(self):
         return 'ptr'
 
+    def format_constant(self, value):
+        return PointerType.null if PointerType.null in str(value) else str(value)
+
 class FunctionType(Type):
     mangle_suff = "F"
     def __init__(self, return_type, args):
