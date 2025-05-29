@@ -161,3 +161,84 @@ class SROATransform:
     def _get_uses(self, value: Value) -> Set[Instruction]:
         """Get all instructions that use this value."""
         return {user for user in value.users if isinstance(user, Instruction)}
+
+    def _is_sroa_candidate(self, function: hir_values.Function,
+                           alloca: hir_instructions.AllocateInstruction) -> bool:
+        """Проверяет, подходит ли alloca для SROA."""
+        if not self._has_safe_uses(function, alloca):
+            return False
+
+        pointee_type = alloca.type.pointee
+
+        # Проверяем базовые типы
+        if isinstance(pointee_type, (NumericT, CharT, BoolT)):
+            # Для скалярных типов SROA нужна только если есть множественные store
+            # или если значение можно продвинуть в регистры
+            return self._should_promote_scalar(function, alloca)
+
+        # Для указателей особая обработка
+        if isinstance(pointee_type, PointerT):
+            return self._should_promote_pointer(function, alloca)
+
+        # Процедурные типы не подлежат SROA
+        if isinstance(pointee_type, ProcedureT):
+            return False
+
+        # Для агрегатных типов - стандартная логика
+        return (isinstance(pointee_type, hir_types.StructType) or
+                isinstance(pointee_type, hir_types.ArrayType))
+
+    def _should_promote_scalar(self, function: hir_values.Function,
+                               alloca: hir_instructions.AllocateInstruction) -> bool:
+        """Определяет, нужно ли продвигать скалярную переменную."""
+        store_count = 0
+        has_complex_uses = False
+
+        for use in self._get_uses(function, alloca):
+            if isinstance(use, hir_instructions.StoreInstruction):
+                store_count += 1
+                if store_count > 1:
+                    return True
+            elif not isinstance(use, hir_instructions.LoadInstruction):
+                has_complex_uses = True
+
+        # Продвигаем если:
+        # 1. Есть только один store и все остальные использования - load
+        # 2. Нет сложных использований (например, взятия адреса)
+        return store_count == 1 and not has_complex_uses
+
+    def _should_promote_pointer(self, function: hir_values.Function,
+                                alloca: hir_instructions.AllocateInstruction) -> bool:
+        """Определяет, нужно ли продвигать указатель."""
+        # Указатели продвигаем только если:
+        # 1. Нет взятия адреса самого указателя
+        # 2. Все использования - load/store
+        for use in self._get_uses(function, alloca):
+            if not isinstance(use, (hir_instructions.LoadInstruction,
+                                    hir_instructions.StoreInstruction)):
+                return False
+        return True
+
+    def _promote_scalar(self, function: hir_values.Function,
+                        alloca: hir_instructions.AllocateInstruction):
+        """Продвигает скалярную переменную в регистры."""
+        value = None
+
+        # Находим единственный store
+        for use in self._get_uses(function, alloca):
+            if isinstance(use, hir_instructions.StoreInstruction):
+                value = use.value
+                break
+
+        if value is not None:
+            # Заменяем все load на использование значения
+            for use in list(self._get_uses(function, alloca)):
+                if isinstance(use, hir_instructions.LoadInstruction):
+                    use.replace_all_uses_with(value)
+                    self._remove_instruction(function, use)
+                elif isinstance(use, hir_instructions.StoreInstruction):
+                    self._remove_instruction(function, use)
+
+            # Удаляем оригинальный alloca
+            self._remove_alloca(function, alloca)
+            self.modified = True

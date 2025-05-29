@@ -12,8 +12,9 @@ class SimplifyCFGTransform:
         """Transform each function in the module."""
         for constructor in module.constructors:
             SimplifyCFGFunctionTransform.transform(constructor)
-        for func in module.globals:
-            SimplifyCFGFunctionTransform.transform(func)
+        for global_value in module.globals:
+            if isinstance(global_value, hir_values.Function):
+                SimplifyCFGFunctionTransform.transform(global_value)
         return module
 
 class SimplifyCFGFunctionTransform:
@@ -34,6 +35,7 @@ class SimplifyCFGFunctionTransform:
             modified = False
             modified |= transformer.__remove_unreachable_blocks(function)
             modified |= transformer.__merge_blocks(function)
+            modified |= transformer.__simplify_branches(function)
             if not modified:
                 break
 
@@ -108,16 +110,30 @@ class SimplifyCFGFunctionTransform:
                     block.terminator = hir_instructions.BranchInstruction(block, block.terminator.operands[1])
                     block.instructions[-1] = block.terminator
                     result = True
+
+                # Fallthrough empty blocks
                 elif true_dest != block.terminator.operands[1] or false_dest != block.terminator.operands[2]:
                     block.terminator.operands[1] = true_dest
                     block.terminator.operands[2] = false_dest
                     result = True
+
+                # If pred condition is identical to block cond
                 else:
                     preds = self.cfg_nodes[block].parents
                     is_conditional = isinstance(preds[0].terminator, hir_instructions.ConditionalBranchInstruction)
-                    if len(preds) == 1 and is_conditional and:
-
-
+                    block_cond = block.terminator.operands[0]
+                    pred_cond = preds[0].terminator.operands[0]
+                    if len(preds) == 1 and is_conditional and pred_cond.is_related(block_cond):
+                        if pred_cond.is_identical(block_cond):
+                            new_target = block.terminator.operands[1 if block is preds[0].terminator.operands[1] else 2]
+                            block.terminator = hir_instructions.BranchInstruction(block, new_target)
+                            block.instructions[-1] = block.terminator
+                            result = True
+                        elif pred_cond.is_negated(block_cond):
+                            new_target = block.terminator.operands[2 if block is preds[0].terminator.operands[1] else 1]
+                            block.terminator = hir_instructions.BranchInstruction(block, new_target)
+                            block.instructions[-1] = block.terminator
+                            result = True
         return result
 
     def __skip_empty_block(self, function: hir_values.Function, entry_block: hir_values.Block):

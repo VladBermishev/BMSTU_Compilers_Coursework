@@ -80,7 +80,23 @@ class CompareInstruction(Instruction):
         'ult': 'uge',
         'ule': 'ugt',
         'ugt': 'ule',
-        'uge': 'ult'
+        'uge': 'ult',
+        'false': 'true',
+        'oeq': 'one',
+        'ogt': 'ole',
+        'oge': 'olt',
+        'olt': 'oge',
+        'ole': 'ogt',
+        'one': 'oeq',
+        'ord': 'uno',
+        'ueq': 'une',
+        'ugt': 'ule',
+        'uge': 'ult',
+        'ult': 'uge',
+        'ule': 'ugt',
+        'une': 'ueq',
+        'uno': 'ord',
+        'true': 'false',
     }
 
     def __init__(self, parent, op, lhs, rhs, name=''):
@@ -100,10 +116,22 @@ class CompareInstruction(Instruction):
             rhs=self.operands[1].get_reference(),
         )
 
+    def is_identical(self, other):
+        if isinstance(other, CompareInstruction):
+            return (
+                    self.opname == other.opname and
+                    (self.op == other.op) and
+                    all([lhs == rhs for lhs, rhs in zip(self.operands, other.operands)])
+            )
+        return False
+
     def is_related(self, other):
         if isinstance(other, CompareInstruction):
-            return (self.opname == other.opname and
-                    (self.op == other.op or ))
+            return (
+                    self.opname == other.opname and
+                    (self.op == other.op or self.op == self.INVERSE_OP[other.op]) and
+                    all([lhs == rhs for lhs, rhs in zip(self.operands, other.operands)])
+            )
         return False
 
 class IntCompareInstruction(CompareInstruction):
