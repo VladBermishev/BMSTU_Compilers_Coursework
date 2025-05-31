@@ -1,0 +1,24 @@
+auto LVs = LatticeSet{};
+auto WL = Stack{};
+
+void scp(){
+    initlattice();
+    for(auto E: ssa_edges)
+        if(LVs[def(E)] != top
+            WL.push(E)
+    while(!WL.empty()) {
+        auto E = WL.pop();
+        auto D = def(E), U = use(E)
+        auto M = meet(LVs[D], LVs[U])
+        if (M == LVs[U])
+            continue;
+        LVs[U] = M;
+        for( Instruction I: ssa_users(U)){
+            WL.push(ssa_edge(U, I));
+            auto old = LVs[I.lhs()];
+            auto new = ssa_recompute_def(I.rhs(), U, M);
+            LVs[I.lhs()] = new;
+            propagate(I, new);
+        }
+    }
+}

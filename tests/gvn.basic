@@ -1,0 +1,14 @@
+function foo%(x%, y%)
+    a% = 1
+    b% = 1
+    do
+        x% = x% + y%
+        a% = a% + x%
+        b% = b% + x%
+    loop while x% > 0
+    foo% = x% + b%
+end function
+
+sub Main(args$())
+    print foo%(10, 10)
+end sub

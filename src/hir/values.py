@@ -167,6 +167,12 @@ class Block(NamedValue):
     def is_terminated(self):
         return self.terminator is not None
 
+    def replace_instruction(self, old, new, remove_old=True):
+        for idx, instr in enumerate(self.instructions):
+            instr.replace_oper(old, new)
+        if old in self.instructions and remove_old:
+            self.instructions.remove(old)
+
     def __str__(self):
         body = ''.join([f"  {instr}\n" for instr in self.instructions])
         return f"{self.name}:\n{body}"

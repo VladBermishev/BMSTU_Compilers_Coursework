@@ -10,7 +10,11 @@ from src.codegen.transform.llvm_ir_transform import LLVMTransform
 from src.formatter.ast_formatter import AstTreeFormatter
 from src.formatter.hir_formatter import HirTreeFormatter
 from src.formatter.llvm_formatter import LLVMFormatter
+from src.optimizer.transforms.dce import DCETransform
+from src.optimizer.transforms.gvn import GVNTransform
+from src.optimizer.transforms.scp import SCPTransform
 from src.optimizer.transforms.simplifycfg import SimplifyCFGFunctionTransform, SimplifyCFGTransform
+from src.optimizer.transforms.sroa import SROATransform
 from src.parser.transforms.semantic_relax_transform import SemanticRelaxTransform
 from src.preprocessor.preprocessor import Preprocessor
 from src.std_library.std_library import StandardLibrary
@@ -28,6 +32,7 @@ if __name__ == '__main__':
     arg_parser.add_argument("--emit-llvm", action="store_true", help="produce llvm-ir", required=False, default=False)
     arg_parser.add_argument("--emit-hir", action="store_true", help="produce hir", required=False, default=False)
     arg_parser.add_argument("--emit-intel-asm", action="store_true", help="produce asm", required=False, default=False)
+    arg_parser.add_argument("--opts", action="store_true", help="Optimization pipeline", required=False, default=False)
     arg_parser.add_argument("--version", action="store_true", help="print version", required=False, default=False)
     arg_parser.add_argument("--output", help="outfile", required=False, default=None)
     arg_parser.add_argument("source_file", nargs='?', help="source_file", default=None)
@@ -66,7 +71,10 @@ if __name__ == '__main__':
         AstTreeFormatter.print(source_ast)
         sys.exit(0)
     module = HirTransform.transform(source_ast, source_id=args.source_file)
-    module = SimplifyCFGTransform.transform(module)
+    if args.opts:
+        opt_pipeline = [SimplifyCFGTransform, SROATransform, DCETransform, SCPTransform, SimplifyCFGTransform, GVNTransform]
+        for opt in opt_pipeline:
+            module = opt.transform(module)
     if args.emit_hir:
         HirTreeFormatter.print(module)
         sys.exit(0)

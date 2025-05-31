@@ -178,7 +178,10 @@ class HirTransformVariableDecl:
     @staticmethod
     def build_ptr_assignment(builder: HirBuilder, ptr, ast_variable: basic_ast.Variable, ast_init: basic_ast.Expr, st: SymbolTable):
         tp = ptr.type
-        tp = ptr.source_etype if isinstance(ptr, hir_instructions.GEPInstruction) else ptr.allocated_type
+        if isinstance(ptr, hir_instructions.GEPInstruction):
+            tp = ptr.source_etype
+        elif isinstance(ptr, hir_instructions.AllocateInstruction):
+            tp = ptr.allocated_type
         init_value = hir_values.HirDefaultValues.get(tp)
         if ast_init:
             init_value = HirTransform.build(builder, ast_init, _store_ptr=ptr, _st=st)
@@ -324,8 +327,8 @@ class HirTransformLenCall:
             return hir_values.ConstantValue(hir_types.IntType(), symbol.type.size[0])
         array = st.qnl(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata.load(builder)
         dims_ptr = builder.gep(BasicToHirTypesMapping.get(ast_node.type), array, [0, 1], name=f"{ast_node.name.name}.dims.ptr")
-        size_ptr = builder.gep(dims_ptr.source_etype.elements_types[1], dims_ptr, [0, 0], name=f"{ast_node.name.name}.len.ptr")
-        return builder.load(size_ptr, name=f"{ast_node.name.name}.len", typ=hir_types.IntType())
+        #size_ptr = builder.gep(dims_ptr.source_etype.elements_types[1], dims_ptr, [0, 0], name=f"{ast_node.name.name}.len.ptr")
+        return builder.load(dims_ptr, name=f"{ast_node.name.name}.len", typ=hir_types.IntType())
 
     @staticmethod
     def build_array_index(builder: HirBuilder, ast_node: basic_ast.ArrayIndex, st: SymbolTable):
@@ -338,7 +341,8 @@ class HirTransformLenCall:
             return builder.call(strlen, [string])
         array = st.unql(STLookupStrategy(SymbolFactory.create(ast_node), STLookupScope.Global)).first().metadata.load(builder)
         dims_ptr = builder.gep(BasicToHirTypesMapping.get(ast_node.type), array, [0, 1], name=f"{ast_node.name.name}.dims.ptr")
-        size_ptr = builder.gep(dims_ptr.source_etype.elements_types[1], dims_ptr, [len(ast_node.args), 0], name=f"{ast_node.name.name}.len.ptr")
+        #size_ptr = builder.gep(dims_ptr.source_etype.elements_types[1], dims_ptr, [len(ast_node.args), 0], name=f"{ast_node.name.name}.len.ptr")
+        size_ptr = builder.gep(hir_types.IntType(), dims_ptr, [len(ast_node.args)], name=f"{ast_node.name.name}.len.ptr")
         return builder.load(size_ptr, name=f"{ast_node.name.name}.len.ptr", typ=hir_types.IntType())
 
     @staticmethod
@@ -388,11 +392,17 @@ class HirTransformArrayIndex:
             return builder.gep(tp, array, [0] + indices, name=f"{ast_node.name.name}.idx")
         elif isinstance(array, hir_values.GlobalVariable) and isinstance(tp, hir_types.PointerType):
             return builder.gep(array.init_value.type, array, [0] + indices, name=f"{ast_node.name.name}.idx")
-        array_ptr = builder.gep(tp, array, [0, 0], name=f"{ast_node.name.name}.ptr.addr")
-        array_ptr = builder.load(array_ptr, name=f"{ast_node.name.name}.ptr", typ=hir_types.PointerType())
+        #array_ptr = builder.gep(tp, array, [0, 0], name=f"{ast_node.name.name}.ptr.addr")
+        #array_ptr = builder.load(array_ptr, name=f"{ast_node.name.name}.ptr", typ=hir_types.PointerType())
+        array_ptr = builder.load(array, name=f"{ast_node.name.name}.ptr", typ=hir_types.PointerType())
         for i, idx in enumerate(indices[:-1]):
-            array_ptr = builder.gep(hir_types.PointerType(), array_ptr, [indices[idx]], name=f"{ast_node.name.name}.idx")
-            array_ptr = builder.load(array_ptr, name=f"{ast_node.name.name}.val.ptr", typ=hir_types.PointerType())
+            if isinstance( indices[idx], hir_values.ConstantValue) and indices[idx].value == 0:
+                array_ptr = builder.load(array_ptr, name=f"{ast_node.name.name}.val.ptr", typ=hir_types.PointerType())
+            else:
+                array_ptr = builder.gep(hir_types.PointerType(), array_ptr, [indices[idx]], name=f"{ast_node.name.name}.idx")
+                array_ptr = builder.load(array_ptr, name=f"{ast_node.name.name}.val.ptr", typ=hir_types.PointerType())
+        if isinstance(indices[-1], hir_values.ConstantValue) and indices[-1].value == 0:
+            return array_ptr
         return builder.gep(BasicToHirTypesMapping.get(ast_node.type), array_ptr, [indices[-1]], name=f"{ast_node.name.name}.idx")
 
 class HirTransformIfElseStatement:

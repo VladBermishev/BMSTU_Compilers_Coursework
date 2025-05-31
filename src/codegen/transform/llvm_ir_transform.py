@@ -1,5 +1,8 @@
 import pathlib
 import os
+
+from src.optimizer.analyzers.cfgnode import CFGNode
+
 os.environ['LLVMLITE_ENABLE_OPAQUE_POINTERS'] = '1'
 import llvmlite
 import llvmlite.binding
@@ -77,15 +80,15 @@ class LLVMTransform:
                 else:
                     builder.ret_void()
             case t if t is hir_instructions.BranchInstruction:
-                block = _st[instr.operands[0].name]
+                block = _get_operand(instr.operands[0])
                 builder.branch(block)
             case t if t is hir_instructions.ConditionalBranchInstruction:
                 cond = _get_operand(instr.operands[0])
-                true_block, false_block = _st[instr.operands[1].name], _st[instr.operands[2].name]
+                true_block, false_block = _get_operand(instr.operands[1]), _get_operand(instr.operands[2])
                 builder.cbranch(cond, true_block, false_block)
             case t if t is hir_instructions.SelectInstruction:
                 cond = _get_operand(instr.operands[0])
-                true_val, false_val = _st[instr.operands[1].name], _st[instr.operands[2].name]
+                true_val, false_val = _get_operand(instr.operands[1]), _get_operand(instr.operands[2])
                 _add_symbol(builder.select(cond, true_val, false_val, instr.name))
             case t if t is hir_instructions.IntCompareInstruction:
                 lhs, rhs = _get_operand(instr.operands[0]), _get_operand(instr.operands[1])
@@ -125,8 +128,9 @@ class LLVMTransform:
             case t if t is hir_instructions.PhiInstruction:
                 phi_instr = builder.phi(HirToLLVMTypesMapping.get(instr.type), instr.name)
                 for (inc_value, inc_block) in instr.incomings:
-                    phi_instr.add_incoming(_get_operand(inc_value), _st[inc_block.name])
+                    phi_instr.incomings.append((inc_value, inc_block))
                 _add_symbol(phi_instr)
+
 
 class LLVMTransformModule:
     @staticmethod
@@ -179,16 +183,35 @@ class LLVMTransformGlobalVariable:
 class LLVMTransformFunction:
     @staticmethod
     def transform(node: hir_values.Function, _parent=None, st=None):
+        def _get_operand(operand):
+            if isinstance(operand, hir_values.ConstantValue):
+                return LLVMTransform.transform(operand)
+            else:
+                return st[operand.get_reference()]
+
         func = llvm_values.Function(_parent, HirToLLVMTypesMapping.get(node.ftype), node.name)
         for hir_arg, llvm_arg in zip(node.args, func.args):
             llvm_arg.name = hir_arg.name
             st[hir_arg.get_reference()] = llvm_arg
         st[node.get_reference()] = func
+        if len(node.blocks) == 0:
+            return func
         for hir_block in node.blocks:
-            st[hir_block.name] = func.append_basic_block(hir_block.name)
+            st[hir_block.get_reference()] = func.append_basic_block(hir_block.name)
+        wl = [node.blocks[0]]
+        visited = set()
+        cfg_nodes = CFGNode.build_nodes(node)
+        while len(wl) > 0:
+            current, wl = wl[0], wl[1:]
+            if current not in visited:
+                visited.add(current)
+                builder = llvm_builder.IRBuilder(st[current.get_reference()])
+                for instr in current.instructions:
+                    LLVMTransform.build(builder, instr, st)
+                wl += cfg_nodes[current].children
         for hir_block in node.blocks:
-            builder = llvm_builder.IRBuilder(st[hir_block.name])
             for instr in hir_block.instructions:
-                LLVMTransform.build(builder, instr, st)
+                if isinstance(instr, hir_instructions.PhiInstruction):
+                    instr.incomings = [(_get_operand(val), _get_operand(block)) for val, block in instr.incomings]
         return func
 

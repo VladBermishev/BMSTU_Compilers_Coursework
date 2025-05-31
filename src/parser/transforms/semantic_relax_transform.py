@@ -181,7 +181,7 @@ class SRVariableDecl:
         result = node
         symbol = SymbolFactory.create(node.variable)
         if st is not None and not (lookup_result := st.bnl(STLookupStrategy(symbol, STLookupScope.Local))).empty():
-            raise RedefinitionError(node.pos, node.variable.name, lookup_result.first().name.pos)
+            raise RedefinitionError(node.pos, node.variable.name, lookup_result.first().name)
         if node.init_value is not None:
             return SRVariableDecl.__transform_init_value(node, st)
         if isinstance(node.variable, basic_ast.Array):

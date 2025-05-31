@@ -1,0 +1,7 @@
+Sub Main(args$())
+    a% = 10 * 20
+    b% = 30 * 40
+    d% = a% + b%
+    e% = 15 + d%
+    Print e%
+end SUB

@@ -1,0 +1,31 @@
+function baz%(x%, y%)
+    baz% = x% * y%
+end function
+
+function bar%(x%)
+    bar% = x% * x%
+end function
+
+function foo%(c%)
+    x% = 0
+    y% = 0
+    Do
+        if (c% > 0) then
+            x% = 1
+            y% = 2
+        else
+            x% = bar%(x%)
+            y% = bar%(x%)
+            x% = y%
+            if (x% > -2) then
+                exit loop
+            end if
+        end if
+        x% = baz%(x%, y%)
+    Loop While x% > 0
+    foo% = x%
+end function
+
+Sub Main(args$())
+    foo%(Len%(args$))
+End Sub

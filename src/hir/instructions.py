@@ -1,3 +1,4 @@
+import copy
 import src.hir.types as hir_types
 import src.hir.values as hir_values
 
@@ -12,6 +13,13 @@ class Instruction(hir_values.NamedValue):
         if self.name != hir_values.NamedValue.empty_name:
             return f"{self.get_reference()} = {self.opname} {self.optype} {', '.join([x.get_reference() for x in self.operands])}"
         return f"{self.opname} {self.optype} {', '.join(map(str, self.operands))}"
+
+    def replace_oper(self, old, new):
+        if old in self.operands:
+            ops = []
+            for oper in self.operands:
+                ops.append(new if oper is old else oper)
+            self.operands = ops
 
 class CallInstruction(Instruction):
     def __init__(self, parent, func, args, name=""):
@@ -66,6 +74,11 @@ class SelectInstruction(Instruction):
     def __init__(self, parent, cond, lhs, rhs, name=""):
         super(SelectInstruction, self).__init__(parent, lhs.type, "select", [cond, lhs, rhs], name=name)
 
+    def is_related(self, other):
+        if isinstance(other, SelectInstruction):
+            return self.operands[0].is_related(other.operands[0])
+        return False
+
 class CompareInstruction(Instruction):
     # Define the following in subclasses
     OPNAME = 'invalid-compare'
@@ -97,6 +110,14 @@ class CompareInstruction(Instruction):
         'une': 'ueq',
         'uno': 'ord',
         'true': 'false',
+    }
+    OP_MAP = {
+        'eq': '==',
+        'ne': '!=',
+        'lt': '<',
+        'le': '<=',
+        'gt': '>',
+        'ge': '>=',
     }
 
     def __init__(self, parent, op, lhs, rhs, name=''):
@@ -235,29 +256,40 @@ class AllocateInstruction(Instruction):
 class GEPInstruction(Instruction):
     def __init__(self, parent, type, ptr, indices, name):
         super(GEPInstruction, self).__init__(parent, ptr.type, "getelementptr", [ptr] + list(indices), name=name)
-        self.pointer = ptr
-        self.indices = indices
         self.source_etype = type
 
     def __str__(self):
-        indices = ['{0} {1}'.format(i.type, i.get_reference()) for i in self.indices]
+        indices = ['{0} {1}'.format(i.type, i.get_reference()) for i in self.operands[1:]]
         return "{0} = getelementptr {1}, {2} {3}, {4}".format(
             self.get_reference(),
             self.source_etype,
-            self.pointer.type,
-            self.pointer.get_reference(),
+            self.operands[0].type,
+            self.operands[0].get_reference(),
             ', '.join(indices),
         )
 
 
 class PhiInstruction(Instruction):
-    def __init__(self, parent, typ, name):
+    def __init__(self, parent, typ, name=""):
         super(PhiInstruction, self).__init__(parent, typ, "phi", (), name=name)
         self.incomings = []
+        self.metadata = None
 
     def add_incoming(self, value, block):
         assert isinstance(block, hir_values.Block)
         self.incomings.append((value, block))
+
+    def replace_oper(self, old, new):
+        if old in [inc[0] for inc in self.incomings]:
+            self.incomings = [(new if val is old else val, block) for val, block in self.incomings]
+
+    def replace_block(self, old, new):
+        if old in [inc[0] for inc in self.incomings]:
+            self.incomings = [(val, new if block is old else block) for val, block in self.incomings]
+
+    def __str__(self):
+        incs = ', '.join('[{0}, {1}]'.format(v.get_reference(), b.get_reference()) for v, b in self.incomings)
+        return f"{self.get_reference()} = phi {self.type} {incs}"
 
 
 
