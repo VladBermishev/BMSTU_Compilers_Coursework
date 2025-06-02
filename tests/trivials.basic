@@ -1,0 +1,15 @@
+Sub D(a%)
+    b% = 0 + (a% + 0)
+    c% = 1 * (a% * 1)
+    d% = a% * 0
+    e# = a% / 1
+    Print e#
+End Sub
+
+Sub F(a%)
+    b% = a% + 1
+    c% = b% + 1
+    d% = c% + 1
+    e# = a% / 1
+    Print e#
+End Sub

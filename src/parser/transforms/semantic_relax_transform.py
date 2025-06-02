@@ -497,6 +497,35 @@ class SRBinaryOpExpr:
             result.type = None
             if result.op in SRBinaryOpExpr.ARITHMETIC_OPERATORS:
                 result.type = DoubleT() if result.op == '/' else common_type(result.left.type, result.right.type)
+
+                # Trivial Algebraic relaxes
+                if result.op == '+':
+                    if is_const_expr(result.left) and ConstantFoldingTransform.transform(result.left).value == 0:
+                        return result.right
+                    if is_const_expr(result.right) and ConstantFoldingTransform.transform(result.right).value == 0:
+                        return result.left
+                elif result.op == '*':
+                    if is_const_expr(result.left):
+                        value = ConstantFoldingTransform.transform(result.left).value
+                        if value == 1:
+                            return result.right
+                        elif value == 0:
+                            return result.left
+                    if is_const_expr(result.right):
+                        value = ConstantFoldingTransform.transform(result.right).value
+                        if value == 1:
+                            return result.left
+                        elif value == 0:
+                            return result.right
+                elif result.op == '/':
+                    if is_const_expr(result.right) and ConstantFoldingTransform.transform(result.right).value == 1:
+                        return ImplicitCastAstGenerator.generate(result.left, result.type)
+                elif result.op == '-':
+                    if is_const_expr(result.left) and ConstantFoldingTransform.transform(result.left).value == 0:
+                        return SemanticRelaxTransform.transform(basic_ast.UnaryOpExpr(result.right.pos, '-', result.right))
+                    if is_const_expr(result.right) and ConstantFoldingTransform.transform(result.right).value == 0:
+                        return result.left
+
                 result.left = ImplicitCastAstGenerator.generate(result.left, result.type)
                 result.right = ImplicitCastAstGenerator.generate(result.right, result.type)
             elif result.op in SRBinaryOpExpr.COMPARISON_OPERATORS:
