@@ -3,7 +3,7 @@ set(CXX_SOURCES_NAMES "main")
 
 set(HEADER_INSTALL_PREFIX "/usr/local/include")
 set(LLVM_INSTALL_PREFIX "/usr/local/lib")
-
+#[==[
 add_executable(std-library main.cpp)
 target_link_libraries(std-library
         ${CMAKE_CURRENT_BINARY_DIR}/prog.o
@@ -11,6 +11,7 @@ target_link_libraries(std-library
 target_link_options(std-library
         PUBLIC -lstdc++
 )
+#]==]
 
 foreach (name ${CXX_SOURCES_NAMES})
     add_custom_command(

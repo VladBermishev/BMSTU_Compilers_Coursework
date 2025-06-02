@@ -3,7 +3,7 @@ project(TBasicCompiler)
 
 set(APPLICATION_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(SOURCES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/)
-set(VENV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/.venv/)
+set(VENV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/venv)
 set(BINARY_INSTALL_DIR "/usr/local/bin")
 
 file(GLOB_RECURSE SOURCES ${SOURCES_DIR}/*)
@@ -20,7 +20,7 @@ add_custom_command(OUTPUT ${APPLICATION_DIR}/bin/
 )
 add_custom_target(compiler-build
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        DEPENDS ${APPLICATION_DIR}/bin/
+        DEPENDS "${APPLICATION_DIR}/bin/"
         COMMENT "Building compiler"
 )
 

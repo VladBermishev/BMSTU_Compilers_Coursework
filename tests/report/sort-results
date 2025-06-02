@@ -1,0 +1,20 @@
+user@user-ms7817:~/code/BMSTU/diploma$ time ./prog
+
+real    0m0,314s
+user    0m0,310s
+sys     0m0,004s
+user@user-ms7817:~/code/BMSTU/diploma$ time ./prog-opt
+
+real    0m0,136s
+user    0m0,134s
+sys     0m0,002s
+user@user-ms7817:~/code/BMSTU/diploma$ time ./prog
+
+real    0m0,314s
+user    0m0,311s
+sys     0m0,003s
+user@user-ms7817:~/code/BMSTU/diploma$ time ./prog-opt
+
+real    0m0,138s
+user    0m0,136s
+sys     0m0,003s

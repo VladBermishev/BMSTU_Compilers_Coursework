@@ -138,7 +138,7 @@ class SROAFunctionTransform:
             if current is alloca_instr.parent:
                 return True
             if current not in visited:
-                visited.add(block)
+                visited.add(current)
                 st += cfg_nodes[current].parents
         return False
         #return alloca_instr.parent in dom_set[block]
