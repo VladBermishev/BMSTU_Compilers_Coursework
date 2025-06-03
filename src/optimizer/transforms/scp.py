@@ -85,7 +85,10 @@ class SCPFunctionTransform:
         elif isinstance(ssa_node, hir_instructions.SelectInstruction):
             return isinstance(ssa_node.operands[0], hir_values.ConstantValue)
         else:
-            return all([isinstance(oper, hir_values.ConstantValue) for oper in ssa_node.operands])
+            result = all([isinstance(oper, hir_values.ConstantValue) for oper in ssa_node.operands])
+            if result and (ssa_node.opname == 'sdiv' or ssa_node.opname == 'fdiv') and ssa_node.operands[1].value == 0:
+                return False
+            return result
 
     @staticmethod
     def __meet(lhs, rhs):

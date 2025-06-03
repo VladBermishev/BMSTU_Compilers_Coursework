@@ -1,4 +1,5 @@
 import enum
+from abc import abstractmethod
 from collections import defaultdict
 import src.hir.module as hir_module
 import src.hir.values as hir_values
@@ -24,7 +25,7 @@ class GVNTransform:
                 GVNFunctionTransform.transform(global_value)
             elif isinstance(global_value, hir_values.GlobalVariable):
                 transformer.partition[f"{global_value.value_type}"].add(global_value)
-        transformer.__split()
+        transformer.split()
         for key, val in transformer.partition.items():
             packet = list(val)
             if len(packet) > 1:
@@ -50,7 +51,7 @@ class GVNTransform:
                     result_idx = module.globals.index(instr)
         return result
 
-    def __split(self):
+    def split(self):
         changed = True
         while changed:
             changed = False
@@ -63,7 +64,7 @@ class GVNTransform:
                 packetI.add(instr)
                 while len(packet) > 0:
                     j = packet.pop()
-                    if self.__match(instr, j):
+                    if self.match(instr, j):
                         packetI.add(j)
                     else:
                         packetNonI.add(j)
@@ -75,9 +76,10 @@ class GVNTransform:
                     changed = True
             self.partition = new_partition
 
-    def __match(self, instr1, instr2):
+    def match(self, instr1, instr2):
         if isinstance(instr1.init_value, hir_values.ConstantValue) and isinstance(instr2.init_value, hir_values.ConstantValue):
             return instr1.init_value.value == instr2.init_value.value
+        return False
 
     def __find_key(self, instr):
         for key, set in self.partition.items():
@@ -85,7 +87,7 @@ class GVNTransform:
                 return key
         return None
 
-class GVNFunctionTransform:
+class GVNFunctionTransform(GVNTransform):
     OPERATIONS = {
         'add': '+',
         'fadd': '+',
@@ -102,15 +104,15 @@ class GVNFunctionTransform:
     }
 
     def __init__(self, function: hir_values.Function):
+        super().__init__()
         self.partition = self.__init_partition(function)
-        self.cnt = 0
 
     @staticmethod
     def transform(function: hir_values.Function):
         dom = DomTree.dom(function)
         cfg_node = CFGNode.build_nodes(function)
         transformer = GVNFunctionTransform(function)
-        transformer.__split(function)
+        transformer.split()
         for key, val in transformer.partition.items():
             packet = list(val)
             if len(packet) > 1:
@@ -128,14 +130,6 @@ class GVNFunctionTransform:
                                 for succ in cfg_node[current].children:
                                     succ.replace_instruction(instr, value)
                     st += [(block, value) for block in dom[current]]
-                """
-                closest = GVNFunctionTransform.__find_closest_block(function, dom, packet)
-                instruction = GVNFunctionTransform.__find_earliest_instruction(closest, packet)
-                packet.remove(instruction)
-                for block in function.blocks:
-                    for instr in packet:
-                        block.replace_instruction(instr, instruction)
-                """
         return function
 
     @staticmethod
@@ -160,32 +154,7 @@ class GVNFunctionTransform:
             st += dom[current]
         return None
 
-    def __split(self, function: hir_values.Function):
-        changed = True
-        while changed:
-            changed = False
-            new_partition = defaultdict(set)
-            cnt = 0
-            for key, value in self.partition.items():
-                packet = value.copy()
-                instr = packet.pop()
-                packetI, packetNonI = set(), set()
-                packetI.add(instr)
-                while len(packet) > 0:
-                    j = packet.pop()
-                    if self.__match(instr, j):
-                        packetI.add(j)
-                    else:
-                        packetNonI.add(j)
-                new_partition[cnt] = packetI
-                cnt += 1
-                if len(packetNonI) > 0:
-                    new_partition[cnt] = packetNonI
-                    cnt += 1
-                    changed = True
-            self.partition = new_partition
-
-    def __match(self, instr1, instr2):
+    def match(self, instr1, instr2):
         if isinstance(instr1, hir_instructions.PhiInstruction):
             result = True
             for inc1, inc2 in zip(instr1.incomings, instr2.incomings):

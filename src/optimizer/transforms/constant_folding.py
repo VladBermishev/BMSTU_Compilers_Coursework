@@ -117,7 +117,8 @@ class CFBinaryExpr:
                                                      int(eval(f"{result.left.value}{result.op}{result.right.value}")),
                                                      basic_types.BoolT())
                     case op if op in ('+', '-', '*', '/'):
-                        result = basic_ast.ConstExpr(result.pos,
-                                                     eval(f"{result.left.value}{result.op}{result.right.value}"),
-                                                     result.left.type if result.left.type.priority > result.right.type.priority else result.right.type)
+                        if not(op == '/' and result.right.value == 0):
+                            result = basic_ast.ConstExpr(result.pos,
+                                                         eval(f"{result.left.value}{result.op}{result.right.value}"),
+                                                         result.left.type if result.left.type.priority > result.right.type.priority else result.right.type)
         return result
