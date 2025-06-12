@@ -28,9 +28,9 @@ public class BasicNonEmptyParametersListImpl extends ASTWrapperPsiElement implem
   }
 
   @Override
-  @Nullable
-  public BasicNonEmptyParametersList getNonEmptyParametersList() {
-    return findChildByClass(BasicNonEmptyParametersList.class);
+  @NotNull
+  public List<BasicNonEmptyParametersList> getNonEmptyParametersListList() {
+    return PsiTreeUtil.getChildrenOfTypeAsList(this, BasicNonEmptyParametersList.class);
   }
 
   @Override

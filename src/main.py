@@ -72,7 +72,6 @@ if __name__ == '__main__':
         sys.exit(0)
     module = HirTransform.transform(source_ast, source_id=args.source_file)
     if args.opts:
-        #opt_pipeline = [SimplifyCFGTransform, SROATransform, DCETransform, SCPTransform, SimplifyCFGTransform, GVNTransform]
         opt_pipeline = [SimplifyCFGTransform, SROATransform, DCETransform, SCPTransform, SimplifyCFGTransform, GVNTransform]
         for opt in opt_pipeline:
             module = opt.transform(module)

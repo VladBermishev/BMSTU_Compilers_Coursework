@@ -4,4 +4,4 @@ Sub Main(args$())
     d% = a% + b%
     e% = 15 + d%
     Print e%
-end SUB
+end sub

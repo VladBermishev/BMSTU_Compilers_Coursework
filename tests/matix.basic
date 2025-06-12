@@ -1,0 +1,21 @@
+sub Main(args$())
+    dim lhs%(500, 500)
+    dim rhs%(500, 500)
+    dim result%(500, 500)
+    for i% = 1 to Len%(lhs%)
+        lhs%(i%, 1) = i%
+        rhs%(i%, 1) = Len%(lhs%) - i%
+        for j% = 2 to Len%(lhs%(i%))
+            lhs%(i%, j%) = lhs%(i%, j%-1) * 1001 + 12345
+            rhs%(i%, j%) = rhs%(i%, j%-1) * 1001 + 12345
+        next j%
+    next i%
+
+    for a% = 1 to Len%(lhs%)
+        for b% = 1 to Len%(lhs%)
+            for c% = 1 to Len%(lhs%)
+                result%(a%, b%) = result%(a%, b%) + lhs%(a%, c%) * rhs%(c%, b%)
+            next c%
+        next b%
+    next a%
+end sub

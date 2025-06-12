@@ -577,7 +577,7 @@ public class BasicParser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // VarnameOrArrayParam (NonEmptyParametersList)?
+  // VarnameOrArrayParam (COMMA NonEmptyParametersList)*
   public static boolean NonEmptyParametersList(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "NonEmptyParametersList")) return false;
     if (!nextTokenIs(b, IDENTIFIER)) return false;
@@ -589,19 +589,24 @@ public class BasicParser implements PsiParser, LightPsiParser {
     return r;
   }
 
-  // (NonEmptyParametersList)?
+  // (COMMA NonEmptyParametersList)*
   private static boolean NonEmptyParametersList_1(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "NonEmptyParametersList_1")) return false;
-    NonEmptyParametersList_1_0(b, l + 1);
+    while (true) {
+      int c = current_position_(b);
+      if (!NonEmptyParametersList_1_0(b, l + 1)) break;
+      if (!empty_element_parsed_guard_(b, "NonEmptyParametersList_1", c)) break;
+    }
     return true;
   }
 
-  // (NonEmptyParametersList)
+  // COMMA NonEmptyParametersList
   private static boolean NonEmptyParametersList_1_0(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "NonEmptyParametersList_1_0")) return false;
     boolean r;
     Marker m = enter_section_(b);
-    r = NonEmptyParametersList(b, l + 1);
+    r = consumeToken(b, COMMA);
+    r = r && NonEmptyParametersList(b, l + 1);
     exit_section_(b, m, null, r);
     return r;
   }

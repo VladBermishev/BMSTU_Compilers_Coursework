@@ -122,7 +122,7 @@ class SROAFunctionTransform:
             while len(WL) > 0:
                 def_block, WL = WL[0], WL[1:]
                 for block in dom_frontier[def_block]:
-                    if alloca_phi[alloca][block] is None:
+                    if self.__is_defined(function, block, alloca) and alloca_phi[alloca][block] is None:
                         phi_instr = hir_instructions.PhiInstruction(block, alloca.allocated_type)
                         self.phis[phi_instr] = alloca
                         block.instructions.insert(0, phi_instr)
@@ -130,6 +130,8 @@ class SROAFunctionTransform:
                         WL.append(block)
 
     def __is_defined(self, function: hir_values.Function, block: hir_values.Block, alloca_instr: hir_instructions.AllocateInstruction):
+        dom_set = DomTree.domset(function)
+        """
         cfg_nodes = CFGNode.build_nodes(function)
         visited = set()
         st = [block]
@@ -141,7 +143,8 @@ class SROAFunctionTransform:
                 visited.add(current)
                 st += cfg_nodes[current].parents
         return False
-        #return alloca_instr.parent in dom_set[block]
+        """
+        return alloca_instr.parent in dom_set[block]
 
     def __find_candidates(self, function: hir_values.Function):
         """Find allocas that are candidates for SROA."""

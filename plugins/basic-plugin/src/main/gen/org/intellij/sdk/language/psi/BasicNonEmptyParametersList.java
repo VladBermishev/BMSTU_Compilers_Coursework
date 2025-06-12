@@ -7,8 +7,8 @@ import com.intellij.psi.PsiElement;
 
 public interface BasicNonEmptyParametersList extends PsiElement {
 
-  @Nullable
-  BasicNonEmptyParametersList getNonEmptyParametersList();
+  @NotNull
+  List<BasicNonEmptyParametersList> getNonEmptyParametersListList();
 
   @NotNull
   BasicVarnameOrArrayParam getVarnameOrArrayParam();

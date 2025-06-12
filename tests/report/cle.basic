@@ -1,0 +1,13 @@
+sub f(a%,b%,c%,d%)
+    a% = b% + c%
+    b% = a% - d%
+    c% = b% + c%
+    d% = a% - d%
+end sub
+
+sub f(a%,b%,c%,d%)
+    a% = b% + c%
+    b% = b% - d%
+    c% = b% + c%
+    e% = b% + c%
+end sub
